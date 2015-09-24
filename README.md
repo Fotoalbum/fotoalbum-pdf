@@ -1,2 +1,0 @@
-# fotoalbum-pdf
-PDF Engine
