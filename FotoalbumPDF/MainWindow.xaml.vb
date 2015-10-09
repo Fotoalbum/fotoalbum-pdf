@@ -22,14 +22,14 @@ Class MainWindow
     Public exportfolder As String = ""
 
     '******** DEBUG *********
-    Public original_exportfolder As String = "C:\PDF Debug\"
-    Public pdf_createfolder As String = "C:\PDF Debug\"
+    'Public original_exportfolder As String = "C:\PDF_Debug\"
+    'Public pdf_createfolder As String = "C:\PDF_Debug\"
 
     Public targetDPI As Integer = 300
 
     '******** PRODUCTION *********
-    'Public original_exportfolder As String = "C:\Users\Administrator\Documents\DONOTREMOVE\FA_ASSETS_PRERENDER\"
-    'Public pdf_createfolder As String = "\\10.1.187.7\data\XHIBIT\www.xhibit.com\pdfexports_xhibit\"
+    Public original_exportfolder As String = "C:\Users\Administrator\Documents\DONOTREMOVE\FA_ASSETS_PRERENDER\"
+    Public pdf_createfolder As String = "N:\XHIBIT\www.xhibit.com\pdfexports_xhibit\"
 
     '******** PDF *********
     Private p As PDFlib_dotnet.PDFlib
@@ -94,7 +94,7 @@ Class MainWindow
 
             Dim query As String = "SELECT o.id, o.status, o.order_id,  u.product_id, u.user_product_id, u.pages_xml, u.textflow_xml, u.textlines_xml, u.photo_xml, u.color_xml FROM pdfengine_order_pdfs o " &
                                   "LEFT OUTER JOIN pdfengine_order_pdf_user_products u ON u.id = o.order_pdf_user_product_id " &
-                                  "WHERE o.status='startMM'"
+                                  "WHERE o.status='start'"
 
             Dim connStringSQL As New MySqlConnection(mySqlConnection)
             Dim myAdapter As New MySqlDataAdapter(query, connStringSQL)
@@ -247,6 +247,8 @@ Class MainWindow
             starttimer.Start()
 
         Catch ex As System.Exception
+
+            MsgBox(ex.Message)
 
             ExitOrder(ex.Message)
 
@@ -3164,7 +3166,7 @@ Class MainWindow
         If singlepageproduct = True Then
             sqlStr = "UPDATE pdfengine_order_pdfs SET status = 'finished', path_bbloc='" & bblock_filename & "', path_cover='', nr_pages=" & numPages & " WHERE id = " & currentOrder.id
         Else
-            sqlStr = "UPDATE pdfengine_order_pdfs SET status = 'finished_check', path_bbloc='" & bblock_filename & "', path_cover='" & cover_filename & "', nr_pages=" & numPages & " WHERE id = " & currentOrder.id
+            sqlStr = "UPDATE pdfengine_order_pdfs SET status = 'finished', path_bbloc='" & bblock_filename & "', path_cover='" & cover_filename & "', nr_pages=" & numPages & " WHERE id = " & currentOrder.id
         End If
 
         Dim connStringSQL As New MySqlConnection(mySqlConnection)
