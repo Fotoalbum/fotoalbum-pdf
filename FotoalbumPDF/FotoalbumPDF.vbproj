@@ -54,16 +54,14 @@
     <ApplicationManifest>My Project\app.manifest</ApplicationManifest>
   </PropertyGroup>
   <ItemGroup>
-    <Reference Include="FAEffects.Effects, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-      <SpecificVersion>False</SpecificVersion>
-      <HintPath>bin\Debug\FAEffects.Effects.dll</HintPath>
+    <Reference Include="FAEffects.Effects">
+      <HintPath>libs\FAEffects.Effects.dll</HintPath>
     </Reference>
     <Reference Include="MySql.Data">
-      <HintPath>..\..\WPDShadowTest\WPDShadowTest\bin\Debug\MySql.Data.dll</HintPath>
+      <HintPath>libs\MySql.Data.dll</HintPath>
     </Reference>
-    <Reference Include="PDFlib_dotnet, Version=8.0.6.0, Culture=neutral, PublicKeyToken=af0805f2b25bb299, processorArchitecture=x86">
-      <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\..\..\..\..\..\Program Files\PDFlib\PDFlib 8.0.6 64-bit\.NET Framework 4.0\bin\PDFlib_dotnet.dll</HintPath>
+    <Reference Include="PDFlib_dotnet">
+      <HintPath>libs\PDFlib_dotnet.dll</HintPath>
     </Reference>
     <Reference Include="System.Core" />
     <Reference Include="System.Drawing" />
