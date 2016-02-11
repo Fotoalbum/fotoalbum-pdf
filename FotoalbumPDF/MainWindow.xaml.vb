@@ -13,23 +13,26 @@ Imports System.Net.Mail
 Imports System.Drawing
 Imports System.Runtime.InteropServices
 Imports System.Drawing.Text
+Imports System.Runtime
 
 Class MainWindow
 
+    'Public mySqlConnection As String = "Server=vm2526.vellance.net;Database=xhibit_2_0;Uid=fotoalbum_root;Pwd=3wnvfEX4psGrp7BU;"
     Public mySqlConnection As String = "Server=vm2526.vellance.net;Database=xhibit_2_0;Uid=fotoalbum_write;Pwd=JMYdhjAKyhHQ4DYJ;"
+
     Public searchpath_imagefolder As String = "http://api.xhibit.com/v2/"
     Public searchpath_fontfolder As String = "C:\DO_NOT_REMOVE_THIS_FOLDER\FONTS_ORIGINAL\" 'PRODUCTION
     Public exportfolder As String = ""
 
     '******** DEBUG *********
-    Public original_exportfolder As String = "C:\PDF_Debug\"
-    Public pdf_createfolder As String = "C:\PDF_Debug\"
+    'Public original_exportfolder As String = "C:\PDF_Debug\"
+    'Public pdf_createfolder As String = "C:\PDF_Debug\"
 
     Public targetDPI As Integer = 300
 
     '******** PRODUCTION *********
-    'Public original_exportfolder As String = "C:\Users\Administrator\Documents\DONOTREMOVE\FA_ASSETS_PRERENDER\"
-    'Public pdf_createfolder As String = "N:\XHIBIT\www.xhibit.com\pdfexports_xhibit\"
+    Public original_exportfolder As String = "C:\Users\Administrator\Documents\DONOTREMOVE\FA_ASSETS_PRERENDER\"
+    Public pdf_createfolder As String = "N:\XHIBIT\www.xhibit.com\pdfexports_xhibit\"
 
     '******** PDF *********
     Private p As PDFlib_dotnet.PDFlib
@@ -61,8 +64,6 @@ Class MainWindow
     Public spineX As Double = 0
     Public isLayFlat As Boolean = False
 
-    Public grid As Canvas
-
     Public ordertimer As DispatcherTimer
 
     Public Event SaveGrid(sender As Object, e As SaveGridEventArgs)
@@ -85,16 +86,11 @@ Class MainWindow
             Me.Content = Nothing
             Me.UpdateLayout()
 
-            GC.Collect()
-            GC.WaitForPendingFinalizers()
-            GC.Collect()
-            GC.WaitForFullGCComplete()
-
             Dim dt As DataTable = New DataTable
 
             Dim query As String = "SELECT o.id, o.status, o.order_id,  u.product_id, u.user_product_id, u.pages_xml, u.textflow_xml, u.textlines_xml, u.photo_xml, u.color_xml FROM pdfengine_order_pdfs o " &
                                   "LEFT OUTER JOIN pdfengine_order_pdf_user_products u ON u.id = o.order_pdf_user_product_id " &
-                                  "WHERE o.status='startMM'"
+                                  "WHERE o.status='start'"
 
             Dim connStringSQL As New MySqlConnection(mySqlConnection)
             Dim myAdapter As New MySqlDataAdapter(query, connStringSQL)
@@ -286,7 +282,7 @@ Class MainWindow
 
             Else
 
-                CreatePageBlock(renderindex)
+                CreatePageBlock()
 
             End If
 
@@ -307,7 +303,7 @@ Class MainWindow
 
         Try
 
-            grid = New Canvas
+            Dim grid As New Canvas
             AddChild(grid)
             Me.UpdateLayout()
 
@@ -773,6 +769,8 @@ Class MainWindow
 
                 Dim elementID As String = element.Attributes.GetNamedItem("id").Value
 
+                Debug.Print(element.Attributes.GetNamedItem("type").Value)
+
                 If element.Attributes.GetNamedItem("type").Value = "photo" Then
 
                     Dim filename As String = ""
@@ -793,8 +791,20 @@ Class MainWindow
                             continueImage = False
                         End If
                     Else
-                        filename = searchpath_imagefolder & element.Attributes.GetNamedItem("hires_url").Value
-                        filename = filename.Replace("\", "/")
+                        If (element.Attributes.GetNamedItem("hires_url").Value <> "") Then
+                            filename = searchpath_imagefolder & element.Attributes.GetNamedItem("hires_url").Value
+                            filename = filename.Replace("\", "/")
+                            Debug.Print(filename)
+                        Else
+                            Dim arr As ArrayList = GetFileUrlFromUpload(element.Attributes.GetNamedItem("original_image_id").Value)
+                            If arr.Count > 0 Then
+                                filename = searchpath_imagefolder & arr(0)
+                                filename = filename.Replace("\", "/")
+                                Debug.Print(filename)
+                            Else
+                                continueImage = False
+                            End If
+                        End If
                     End If
 
                     If continueImage Then
@@ -830,7 +840,7 @@ Class MainWindow
                         Dim borderweight As Integer = 0
                         If Not IsNothing(element.Attributes.GetNamedItem("borderweight")) Then
                             If element.Attributes.GetNamedItem("borderweight").Value > 0 Then
-                                borderweight = Math.Round(XmlConvert.ToInt32(element.Attributes.GetNamedItem("borderweight").Value) * (targetDPI / 96))
+                                borderweight = Math.Round(XmlConvert.ToDouble(element.Attributes.GetNamedItem("borderweight").Value) * (targetDPI / 96))
                             End If
                         End If
 
@@ -1107,7 +1117,7 @@ Class MainWindow
                     Dim borderweight As Integer = 0
                     If Not IsNothing(element.Attributes.GetNamedItem("borderweight")) Then
                         If element.Attributes.GetNamedItem("borderweight").Value > 0 Then
-                            borderweight = Math.Round(XmlConvert.ToInt32(element.Attributes.GetNamedItem("borderweight").Value) * (targetDPI / 96))
+                            borderweight = Math.Round(XmlConvert.ToDouble(element.Attributes.GetNamedItem("borderweight").Value) * (targetDPI / 96))
                         End If
                     End If
 
@@ -1388,11 +1398,13 @@ Class MainWindow
 
             Next
 
+            Application.Current.Dispatcher.Invoke(New Action(AddressOf SaveCover), DispatcherPriority.ContextIdle)
+
             'Save the image
-            savecovertimer = New DispatcherTimer()
-            AddHandler savecovertimer.Tick, AddressOf SaveCover
-            savecovertimer.Interval = New TimeSpan(0, 0, 5)
-            savecovertimer.Start()
+            'savecovertimer = New DispatcherTimer()
+            'AddHandler savecovertimer.Tick, AddressOf SaveCover
+            'savecovertimer.Interval = New TimeSpan(0, 0, 5)
+            'savecovertimer.Start()
 
         Catch ex As Exception
 
@@ -1402,7 +1414,7 @@ Class MainWindow
 
     End Sub
 
-    Public Sub CreatePageBlock(index As Integer)
+    Public Sub CreatePageBlock()
 
         Dim scale As New ScaleTransform()
         scale.ScaleX = 0.1
@@ -1411,11 +1423,15 @@ Class MainWindow
 
         Try
 
-            grid = New Canvas
+            GC.Collect()
+
+            'Debug.Print("Memory used after full collection:   {0:N0}", GC.GetTotalMemory(True))
+
+            Dim grid As New Canvas
             AddChild(grid)
             Me.UpdateLayout()
 
-            Dim spread As XmlNode = spreadLst(index)
+            Dim spread As XmlNode = spreadLst(renderindex)
             Dim spreadID As String = spread.Attributes.GetNamedItem("spreadID").Value
 
             Dim pages As XmlNodeList = spread.SelectNodes("descendant::page")
@@ -1440,10 +1456,12 @@ Class MainWindow
                 height += 2 * (bleed + wrap)
             End If
 
-            If isLayFlat = True And (index = 1 Or index = spreadLst.Count - 1) Then
+            If isLayFlat = True And (renderindex = 1 Or renderindex = spreadLst.Count - 1) Then
                 width = XmlConvert.ToDouble(spreadLst(2).Attributes.GetNamedItem("totalWidth").Value.ToString()) * (targetDPI / 96)
-                If index = 1 Then
+                If renderindex = 1 Then
                     layflatmargin = XmlConvert.ToDouble(spread.Attributes.GetNamedItem("totalWidth").Value.ToString()) * (targetDPI / 96)
+                    'Extra bleed correction for layflat
+                    layflatmargin -= (2 * bleed)
                 Else
                     layflatmargin = 0
                 End If
@@ -1500,7 +1518,7 @@ Class MainWindow
                     filename = filename.Replace("\", "/")
                 End If
 
-                Debug.Print(filename)
+                'Debug.Print(filename)
 
                 If (continueImage) Then
 
@@ -1523,7 +1541,7 @@ Class MainWindow
                     src.BeginInit()
                     src.CreateOptions = BitmapCreateOptions.PreservePixelFormat Or BitmapCreateOptions.IgnoreColorProfile
                     src.StreamSource = ms
-                    src.CacheOption = BitmapCacheOption.OnLoad
+                    src.CacheOption = BitmapCacheOption.None
 
                     Select Case imgRotation
                         Case 90
@@ -1658,6 +1676,8 @@ Class MainWindow
 
                     ms = Nothing
                     src = Nothing
+                    srcimg = Nothing
+
                 Else
                     If background.Attributes.GetNamedItem("status").Value <> "empty" Then
                         Throw New Exception("No source found!! " + background.OuterXml)
@@ -1695,6 +1715,18 @@ Class MainWindow
 
                     mainspread.Children.Add(bg)
 
+                End If
+
+                If isLayFlat = True And renderindex = spreadLst.Count - 1 Then
+                    'Force a white background for the right page
+                    Dim bg As New Canvas
+                    bg.Width = pagewidth
+                    bg.Height = pageheight
+                    bg.Background = New SolidColorBrush(System.Windows.Media.Color.FromRgb(255, 255, 255))
+                    bg.HorizontalAlignment = Windows.HorizontalAlignment.Right
+                    bg.VerticalAlignment = Windows.VerticalAlignment.Top
+                    bg.Margin = New Thickness(pagewidth, 0, 0, 0)
+                    mainspread.Children.Add(bg)
                 End If
 
                 If Not page.SelectSingleNode("background") Is Nothing Then
@@ -1744,7 +1776,7 @@ Class MainWindow
                         src.BeginInit()
                         src.CreateOptions = BitmapCreateOptions.PreservePixelFormat Or BitmapCreateOptions.IgnoreColorProfile
                         src.StreamSource = ms
-                        src.CacheOption = BitmapCacheOption.OnLoad
+                        src.CacheOption = BitmapCacheOption.None
 
                         Select Case imgRotation
 
@@ -1886,6 +1918,8 @@ Class MainWindow
 
                         ms = Nothing
                         src = Nothing
+                        srcimg = Nothing
+
                     Else
                         If background.Attributes.GetNamedItem("status").Value <> "empty" Then
                             Throw New Exception("No source found!! " + background.OuterXml)
@@ -1918,6 +1952,7 @@ Class MainWindow
                             If arr.Count > 0 Then
                                 filename = searchpath_imagefolder & arr(0)
                                 filename = filename.Replace("\", "/")
+                                Debug.Print(filename)
                             Else
                                 continueImage = False
                             End If
@@ -1925,8 +1960,20 @@ Class MainWindow
                             continueImage = False
                         End If
                     Else
-                        filename = searchpath_imagefolder & element.Attributes.GetNamedItem("hires_url").Value
-                        filename = filename.Replace("\", "/")
+                        If (element.Attributes.GetNamedItem("hires_url").Value <> "") Then
+                            filename = searchpath_imagefolder & element.Attributes.GetNamedItem("hires_url").Value
+                            filename = filename.Replace("\", "/")
+                            Debug.Print(filename)
+                        Else
+                            Dim arr As ArrayList = GetFileUrlFromUpload(element.Attributes.GetNamedItem("original_image_id").Value)
+                            If arr.Count > 0 Then
+                                filename = searchpath_imagefolder & arr(0)
+                                filename = filename.Replace("\", "/")
+                                Debug.Print(filename)
+                            Else
+                                continueImage = False
+                            End If
+                        End If
                     End If
 
                     If continueImage Then
@@ -1973,7 +2020,7 @@ Class MainWindow
                         Dim borderweight As Integer = 0
                         If Not IsNothing(element.Attributes.GetNamedItem("borderweight")) Then
                             If element.Attributes.GetNamedItem("borderweight").Value > 0 Then
-                                borderweight = Math.Round(XmlConvert.ToInt32(element.Attributes.GetNamedItem("borderweight").Value) * (targetDPI / 96))
+                                borderweight = Math.Round(XmlConvert.ToDouble(element.Attributes.GetNamedItem("borderweight").Value) * (targetDPI / 96))
                             End If
                         End If
 
@@ -2015,7 +2062,7 @@ Class MainWindow
                         src.BeginInit()
                         src.CreateOptions = BitmapCreateOptions.PreservePixelFormat Or BitmapCreateOptions.IgnoreColorProfile
                         src.StreamSource = ms
-                        src.CacheOption = BitmapCacheOption.OnLoad
+                        src.CacheOption = BitmapCacheOption.None
 
                         Select Case imgRotation
 
@@ -2171,7 +2218,7 @@ Class MainWindow
                             Dim overlaysrc As BitmapImage = New BitmapImage
                             overlaysrc.BeginInit()
                             overlaysrc.CreateOptions = BitmapCreateOptions.PreservePixelFormat Or BitmapCreateOptions.IgnoreColorProfile
-                            overlaysrc.CacheOption = BitmapCacheOption.OnLoad
+                            overlaysrc.CacheOption = BitmapCacheOption.None
                             overlaysrc.StreamSource = overlayms
                             overlaysrc.EndInit()
 
@@ -2232,6 +2279,7 @@ Class MainWindow
 
                         ms = Nothing
                         src = Nothing
+                        srcimg = Nothing
 
                     Else
 
@@ -2268,7 +2316,7 @@ Class MainWindow
                     Dim borderweight As Integer = 0
                     If Not IsNothing(element.Attributes.GetNamedItem("borderweight")) Then
                         If element.Attributes.GetNamedItem("borderweight").Value > 0 Then
-                            borderweight = Math.Round(XmlConvert.ToInt32(element.Attributes.GetNamedItem("borderweight").Value) * (targetDPI / 96))
+                            borderweight = Math.Round(XmlConvert.ToDouble(element.Attributes.GetNamedItem("borderweight").Value) * (targetDPI / 96))
                         End If
                     End If
 
@@ -2312,7 +2360,7 @@ Class MainWindow
                     src.BeginInit()
                     src.CreateOptions = BitmapCreateOptions.PreservePixelFormat Or BitmapCreateOptions.IgnoreColorProfile
                     src.StreamSource = ms
-                    src.CacheOption = BitmapCacheOption.OnLoad
+                    src.CacheOption = BitmapCacheOption.None
                     src.EndInit()
 
                     Dim srcimg As New System.Windows.Controls.Image
@@ -2371,6 +2419,7 @@ Class MainWindow
 
                     ms = Nothing
                     src = Nothing
+                    srcimg = Nothing
 
                 End If
 
@@ -2553,6 +2602,7 @@ Class MainWindow
                 End If
 
             Next
+
 
             'Save the image
             savebblocktimer = New DispatcherTimer()
@@ -2787,14 +2837,8 @@ Class MainWindow
         renderindex += 1
 
         Me.Content = Nothing
-        grid = Nothing
 
-        GC.Collect()
-        GC.WaitForPendingFinalizers()
-        GC.Collect()
-        GC.WaitForFullGCComplete()
-
-        CreatePageBlock(renderindex)
+        CreatePageBlock()
 
     End Sub
 
@@ -3016,7 +3060,7 @@ Class MainWindow
                 Dim layflatmargin As Double = 0
                 Dim singlepageFirst As Boolean = (pages(0).Attributes.GetNamedItem("singlepageFirst").Value.ToString.ToLower = "true")
                 If singlepageFirst = True Then
-                    layflatmargin = pages(0).Attributes.GetNamedItem("pageWidth").Value + (bleed * 2)
+                    layflatmargin = XmlConvert.ToDouble(pages(0).Attributes.GetNamedItem("pageWidth").Value)
                 End If
 
                 Dim imageopt As String = "boxsize={" & width & " " & height & "} position={center} fitmethod=slice"
@@ -3166,7 +3210,7 @@ Class MainWindow
         If singlepageproduct = True Then
             sqlStr = "UPDATE pdfengine_order_pdfs SET status = 'finished', path_bbloc='" & bblock_filename & "', path_cover='', nr_pages=" & numPages & " WHERE id = " & currentOrder.id
         Else
-            sqlStr = "UPDATE pdfengine_order_pdfs SET status = 'finishedMM', path_bbloc='" & bblock_filename & "', path_cover='" & cover_filename & "', nr_pages=" & numPages & " WHERE id = " & currentOrder.id
+            sqlStr = "UPDATE pdfengine_order_pdfs SET status = 'finished', path_bbloc='" & bblock_filename & "', path_cover='" & cover_filename & "', nr_pages=" & numPages & " WHERE id = " & currentOrder.id
         End If
 
         Dim connStringSQL As New MySqlConnection(mySqlConnection)
@@ -3347,17 +3391,16 @@ Class MainWindow
 
     End Sub
 
-    Public Sub SaveCover(sender As Object, e As EventArgs)
+    Public Sub SaveCover()
 
-        savecovertimer.Stop()
-        savecovertimer = Nothing
+        'savecovertimer.Stop()
+        'savecovertimer = Nothing
 
         Try
 
             Dim filename As String = exportfolder & spreadLst(renderindex).Attributes.GetNamedItem("spreadID").Value & ".jpg"
 
-            grid.UpdateLayout()
-            Dim placeholder As UIElement = grid.Children(0)
+            Dim placeholder As UIElement = Me.Content.Children(0)
             placeholder.UpdateLayout()
 
             Dim b As Rect = VisualTreeHelper.GetDescendantBounds(Me)
@@ -3375,22 +3418,18 @@ Class MainWindow
             Dim fileStream As Stream = File.Open(filename, FileMode.Create)
             encoder.Save(fileStream)
             fileStream.Close()
+            fileStream.Dispose()
 
             encoder = Nothing
-            fileStream = Nothing
             bmpRen = Nothing
 
             Me.Content = Nothing
-            grid = Nothing
+
+            Me.InvalidateVisual()
 
             Me.UpdateLayout()
 
-            GC.Collect()
-            GC.WaitForPendingFinalizers()
-            GC.Collect()
-            GC.WaitForFullGCComplete()
-
-            SavePDFCover()
+            Application.Current.Dispatcher.Invoke(New Action(AddressOf SavePDFCover), DispatcherPriority.ContextIdle)
 
         Catch ex As Exception
             ExitOrder(ex.Message)
@@ -3403,12 +3442,11 @@ Class MainWindow
         savebblocktimer.Stop()
         savebblocktimer = Nothing
 
+        Dim filename As String = exportfolder & spreadLst(renderindex).Attributes.GetNamedItem("spreadID").Value & ".jpg"
+
         Try
 
-            Dim filename As String = exportfolder & spreadLst(renderindex).Attributes.GetNamedItem("spreadID").Value & ".jpg"
-
-            grid.UpdateLayout()
-            Dim placeholder As UIElement = grid.Children(0)
+            Dim placeholder As UIElement = Me.Content.Children(0)
             placeholder.UpdateLayout()
 
             Dim b As Rect = VisualTreeHelper.GetDescendantBounds(Me)
@@ -3427,28 +3465,31 @@ Class MainWindow
             encoder.Save(fileStream)
             fileStream.Close()
 
+            fileStream.Dispose()
+
             encoder = Nothing
             fileStream = Nothing
             bmpRen = Nothing
 
+            Me.Content.Children.Clear()
+
             Me.Content = Nothing
+
             Me.UpdateLayout()
 
             GC.Collect()
-            GC.WaitForPendingFinalizers()
-            GC.Collect()
-            GC.WaitForFullGCComplete()
 
             If renderindex = spreadLst.Count - 1 Then
 
-                SavePDFBlock()
+                Application.Current.Dispatcher.Invoke(New Action(AddressOf SavePDFBlock), DispatcherPriority.ContextIdle)
 
             Else
 
                 'Move on to next spread!
                 renderindex += 1
 
-                CreatePageBlock(renderindex)
+                Application.Current.Dispatcher.Invoke(New Action(AddressOf CreatePageBlock), DispatcherPriority.ContextIdle)
+
 
             End If
 
@@ -3528,16 +3569,8 @@ Class MainWindow
             p = Nothing
         End If
 
-        If Not grid Is Nothing Then
-            grid = Nothing
-        End If
         Me.Content = Nothing
         Me.UpdateLayout()
-
-        GC.Collect()
-        GC.WaitForPendingFinalizers()
-        GC.Collect()
-        GC.WaitForFullGCComplete()
 
         '============================================================================
         ' Update the order with the new result and filenames etc
