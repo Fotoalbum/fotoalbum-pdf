@@ -14,6 +14,8 @@ Imports System.Drawing
 Imports System.Runtime.InteropServices
 Imports System.Drawing.Text
 Imports System.Runtime
+Imports System.Drawing.Imaging
+
 
 Class MainWindow
 
@@ -25,14 +27,14 @@ Class MainWindow
     Public exportfolder As String = ""
 
     '******** DEBUG *********
-    'Public original_exportfolder As String = "C:\PDF_Debug\"
-    'Public pdf_createfolder As String = "C:\PDF_Debug\"
+    Public original_exportfolder As String = "C:\PDF_Debug\"
+    Public pdf_createfolder As String = "C:\PDF_Debug\"
 
     Public targetDPI As Integer = 300
 
     '******** PRODUCTION *********
-    Public original_exportfolder As String = "C:\Users\Administrator\Documents\DONOTREMOVE\FA_ASSETS_PRERENDER\"
-    Public pdf_createfolder As String = "N:\XHIBIT\www.xhibit.com\pdfexports_xhibit\"
+    'Public original_exportfolder As String = "C:\Users\Administrator\Documents\DONOTREMOVE\FA_ASSETS_PRERENDER\"
+    'Public pdf_createfolder As String = "N:\XHIBIT\www.xhibit.com\pdfexports_xhibit\"
 
     '******** PDF *********
     Private p As PDFlib_dotnet.PDFlib
@@ -64,6 +66,10 @@ Class MainWindow
     Public spineX As Double = 0
     Public isLayFlat As Boolean = False
 
+    'Webprint format
+    Public createJPG As Boolean = False
+    Public webprintDoc As XmlDocument
+
     Public ordertimer As DispatcherTimer
 
     Public Event SaveGrid(sender As Object, e As SaveGridEventArgs)
@@ -90,13 +96,14 @@ Class MainWindow
 
             Dim query As String = "SELECT o.id, o.status, o.order_id,  u.product_id, u.user_product_id, u.pages_xml, u.textflow_xml, u.textlines_xml, u.photo_xml, u.color_xml FROM pdfengine_order_pdfs o " &
                                   "LEFT OUTER JOIN pdfengine_order_pdf_user_products u ON u.id = o.order_pdf_user_product_id " &
-                                  "WHERE o.status='start'"
+                                  "WHERE o.status='startJPG'"
 
             Dim connStringSQL As New MySqlConnection(mySqlConnection)
             Dim myAdapter As New MySqlDataAdapter(query, connStringSQL)
             myAdapter.Fill(dt)
 
             For Each row As DataRow In dt.Rows
+
                 Dim neworder As New order()
                 neworder.id = row("id")
                 neworder.status = row("status")
@@ -154,10 +161,17 @@ Class MainWindow
 
             isLayFlat = False
 
+            If currentOrder.status = "startJPG" Then
+                createJPG = True
+                webprintDoc = New XmlDocument
+                Dim docNode As XmlNode = webprintDoc.CreateXmlDeclaration("1.0", "UTF-8", Nothing)
+                webprintDoc.AppendChild(docNode)
+            End If
+
             'Check if this is a lay flat book
             Dim dt As DataTable = New DataTable
 
-            Dim query As String = "SELECT product_papertype_id FROM xhibit_products " & _
+            Dim query As String = "Select product_papertype_id FROM xhibit_products " &
                                   "WHERE id=" & currentOrder.product_id
 
             Dim connStringSQL As New MySqlConnection(mySqlConnection)
@@ -174,7 +188,7 @@ Class MainWindow
 
             fonts = New DataTable
 
-            query = "SELECT * FROM cms_app_fonts"
+            query = "Select * FROM cms_app_fonts"
             connStringSQL = New MySqlConnection(mySqlConnection)
             myAdapter = New MySqlDataAdapter(query, connStringSQL)
             myAdapter.Fill(fonts)
@@ -1399,12 +1413,6 @@ Class MainWindow
             Next
 
             Application.Current.Dispatcher.Invoke(New Action(AddressOf SaveCover), DispatcherPriority.ContextIdle)
-
-            'Save the image
-            'savecovertimer = New DispatcherTimer()
-            'AddHandler savecovertimer.Tick, AddressOf SaveCover
-            'savecovertimer.Interval = New TimeSpan(0, 0, 5)
-            'savecovertimer.Start()
 
         Catch ex As Exception
 
@@ -2686,146 +2694,150 @@ Class MainWindow
         Dim cropwidth As Double = width + (2 * coverbleed)
         Dim cropheight As Double = height + (2 * coverbleed)
 
-        'Draw the cropmarks etc
-        p.setlinewidth(0.3)
-        p.setcolor("stroke", "rgb", 1, 1, 1, 1)
-        'left top vertical
-        p.moveto(coverbleed, 0)
-        p.lineto(coverbleed, coverbleed - 2)
-        p.stroke()
+        If currentOrder.status = "start" Then
 
-        p.setlinewidth(0.1)
-        p.setcolor("stroke", "rgb", 0, 0, 0, 0)
-        'left top vertical
-        p.moveto(coverbleed, 0)
-        p.lineto(coverbleed, coverbleed - 2)
-        p.stroke()
+            'Draw the cropmarks etc
+            p.setlinewidth(0.3)
+            p.setcolor("stroke", "rgb", 1, 1, 1, 1)
+            'left top vertical
+            p.moveto(coverbleed, 0)
+            p.lineto(coverbleed, coverbleed - 2)
+            p.stroke()
 
-        p.setlinewidth(0.3)
-        p.setcolor("stroke", "rgb", 1, 1, 1, 1)
-        'left top horizontal
-        p.moveto(0, coverbleed)
-        p.lineto(coverbleed - 2, coverbleed)
-        p.stroke()
+            p.setlinewidth(0.1)
+            p.setcolor("stroke", "rgb", 0, 0, 0, 0)
+            'left top vertical
+            p.moveto(coverbleed, 0)
+            p.lineto(coverbleed, coverbleed - 2)
+            p.stroke()
 
-        p.setlinewidth(0.1)
-        p.setcolor("stroke", "rgb", 0, 0, 0, 0)
-        'left top horizontal
-        p.moveto(0, coverbleed)
-        p.lineto(coverbleed - 2, coverbleed)
-        p.stroke()
+            p.setlinewidth(0.3)
+            p.setcolor("stroke", "rgb", 1, 1, 1, 1)
+            'left top horizontal
+            p.moveto(0, coverbleed)
+            p.lineto(coverbleed - 2, coverbleed)
+            p.stroke()
 
-        p.setlinewidth(0.3)
-        p.setcolor("stroke", "rgb", 1, 1, 1, 1)
-        'spine top vertical
-        p.moveto(spineX + coverbleed, 0)
-        p.lineto(spineX + coverbleed, coverbleed - 2)
-        p.stroke()
+            p.setlinewidth(0.1)
+            p.setcolor("stroke", "rgb", 0, 0, 0, 0)
+            'left top horizontal
+            p.moveto(0, coverbleed)
+            p.lineto(coverbleed - 2, coverbleed)
+            p.stroke()
 
-        p.setlinewidth(0.1)
-        p.setcolor("stroke", "rgb", 0, 0, 0, 0)
-        'spine top vertical
-        p.moveto(spineX + coverbleed, 0)
-        p.lineto(spineX + coverbleed, coverbleed - 2)
-        p.stroke()
+            p.setlinewidth(0.3)
+            p.setcolor("stroke", "rgb", 1, 1, 1, 1)
+            'spine top vertical
+            p.moveto(spineX + coverbleed, 0)
+            p.lineto(spineX + coverbleed, coverbleed - 2)
+            p.stroke()
 
-        p.setlinewidth(0.3)
-        p.setcolor("stroke", "rgb", 1, 1, 1, 1)
-        'right top vertical
-        p.moveto(cropwidth - coverbleed, 0)
-        p.lineto(cropwidth - coverbleed, coverbleed - 2)
-        p.stroke()
+            p.setlinewidth(0.1)
+            p.setcolor("stroke", "rgb", 0, 0, 0, 0)
+            'spine top vertical
+            p.moveto(spineX + coverbleed, 0)
+            p.lineto(spineX + coverbleed, coverbleed - 2)
+            p.stroke()
 
-        p.setlinewidth(0.1)
-        p.setcolor("stroke", "rgb", 0, 0, 0, 0)
-        'right top vertical
-        p.moveto(cropwidth - coverbleed, 0)
-        p.lineto(cropwidth - coverbleed, coverbleed - 2)
-        p.stroke()
+            p.setlinewidth(0.3)
+            p.setcolor("stroke", "rgb", 1, 1, 1, 1)
+            'right top vertical
+            p.moveto(cropwidth - coverbleed, 0)
+            p.lineto(cropwidth - coverbleed, coverbleed - 2)
+            p.stroke()
 
-        p.setlinewidth(0.3)
-        p.setcolor("stroke", "rgb", 1, 1, 1, 1)
-        'right top horizontal
-        p.moveto(cropwidth, coverbleed)
-        p.lineto(cropwidth - coverbleed + 2, coverbleed)
-        p.stroke()
+            p.setlinewidth(0.1)
+            p.setcolor("stroke", "rgb", 0, 0, 0, 0)
+            'right top vertical
+            p.moveto(cropwidth - coverbleed, 0)
+            p.lineto(cropwidth - coverbleed, coverbleed - 2)
+            p.stroke()
 
-        p.setlinewidth(0.1)
-        p.setcolor("stroke", "rgb", 0, 0, 0, 0)
-        'right top horizontal
-        p.moveto(cropwidth, coverbleed)
-        p.lineto(cropwidth - coverbleed + 2, coverbleed)
-        p.stroke()
+            p.setlinewidth(0.3)
+            p.setcolor("stroke", "rgb", 1, 1, 1, 1)
+            'right top horizontal
+            p.moveto(cropwidth, coverbleed)
+            p.lineto(cropwidth - coverbleed + 2, coverbleed)
+            p.stroke()
 
-        p.setlinewidth(0.3)
-        p.setcolor("stroke", "rgb", 1, 1, 1, 1)
-        'right bottom horizontal
-        p.moveto(cropwidth, cropheight - coverbleed)
-        p.lineto(cropwidth - coverbleed + 2, cropheight - coverbleed)
-        p.stroke()
+            p.setlinewidth(0.1)
+            p.setcolor("stroke", "rgb", 0, 0, 0, 0)
+            'right top horizontal
+            p.moveto(cropwidth, coverbleed)
+            p.lineto(cropwidth - coverbleed + 2, coverbleed)
+            p.stroke()
 
-        p.setlinewidth(0.1)
-        p.setcolor("stroke", "rgb", 0, 0, 0, 0)
-        'right bottom horizontal
-        p.moveto(cropwidth, cropheight - coverbleed)
-        p.lineto(cropwidth - coverbleed + 2, cropheight - coverbleed)
-        p.stroke()
+            p.setlinewidth(0.3)
+            p.setcolor("stroke", "rgb", 1, 1, 1, 1)
+            'right bottom horizontal
+            p.moveto(cropwidth, cropheight - coverbleed)
+            p.lineto(cropwidth - coverbleed + 2, cropheight - coverbleed)
+            p.stroke()
 
-        p.setlinewidth(0.3)
-        p.setcolor("stroke", "rgb", 1, 1, 1, 1)
-        'right bottom vertical
-        p.moveto(cropwidth - coverbleed, cropheight)
-        p.lineto(cropwidth - coverbleed, cropheight - coverbleed + 2)
-        p.stroke()
+            p.setlinewidth(0.1)
+            p.setcolor("stroke", "rgb", 0, 0, 0, 0)
+            'right bottom horizontal
+            p.moveto(cropwidth, cropheight - coverbleed)
+            p.lineto(cropwidth - coverbleed + 2, cropheight - coverbleed)
+            p.stroke()
 
-        p.setlinewidth(0.1)
-        p.setcolor("stroke", "rgb", 0, 0, 0, 0)
-        'right bottom vertical
-        p.moveto(cropwidth - coverbleed, cropheight)
-        p.lineto(cropwidth - coverbleed, cropheight - coverbleed + 2)
-        p.stroke()
+            p.setlinewidth(0.3)
+            p.setcolor("stroke", "rgb", 1, 1, 1, 1)
+            'right bottom vertical
+            p.moveto(cropwidth - coverbleed, cropheight)
+            p.lineto(cropwidth - coverbleed, cropheight - coverbleed + 2)
+            p.stroke()
 
-        p.setlinewidth(0.3)
-        p.setcolor("stroke", "rgb", 1, 1, 1, 1)
-        'spine bottom vertical
-        p.moveto(spineX + coverbleed, cropheight)
-        p.lineto(spineX + coverbleed, cropheight - coverbleed + 2)
-        p.stroke()
+            p.setlinewidth(0.1)
+            p.setcolor("stroke", "rgb", 0, 0, 0, 0)
+            'right bottom vertical
+            p.moveto(cropwidth - coverbleed, cropheight)
+            p.lineto(cropwidth - coverbleed, cropheight - coverbleed + 2)
+            p.stroke()
 
-        p.setlinewidth(0.1)
-        p.setcolor("stroke", "rgb", 0, 0, 0, 0)
-        'spine bottom vertical
-        p.moveto(spineX + coverbleed, cropheight)
-        p.lineto(spineX + coverbleed, cropheight - coverbleed + 2)
-        p.stroke()
+            p.setlinewidth(0.3)
+            p.setcolor("stroke", "rgb", 1, 1, 1, 1)
+            'spine bottom vertical
+            p.moveto(spineX + coverbleed, cropheight)
+            p.lineto(spineX + coverbleed, cropheight - coverbleed + 2)
+            p.stroke()
 
-        p.setlinewidth(0.3)
-        p.setcolor("stroke", "rgb", 1, 1, 1, 1)
-        'left bottom vertical
-        p.moveto(coverbleed, cropheight)
-        p.lineto(coverbleed, cropheight - coverbleed + 2)
-        p.stroke()
+            p.setlinewidth(0.1)
+            p.setcolor("stroke", "rgb", 0, 0, 0, 0)
+            'spine bottom vertical
+            p.moveto(spineX + coverbleed, cropheight)
+            p.lineto(spineX + coverbleed, cropheight - coverbleed + 2)
+            p.stroke()
 
-        p.setlinewidth(0.1)
-        p.setcolor("stroke", "rgb", 0, 0, 0, 0)
-        'left bottom vertical
-        p.moveto(coverbleed, cropheight)
-        p.lineto(coverbleed, cropheight - coverbleed + 2)
-        p.stroke()
+            p.setlinewidth(0.3)
+            p.setcolor("stroke", "rgb", 1, 1, 1, 1)
+            'left bottom vertical
+            p.moveto(coverbleed, cropheight)
+            p.lineto(coverbleed, cropheight - coverbleed + 2)
+            p.stroke()
 
-        p.setlinewidth(0.3)
-        p.setcolor("stroke", "rgb", 1, 1, 1, 1)
-        'left bottom horizontal
-        p.moveto(0, cropheight - coverbleed)
-        p.lineto(coverbleed - 2, cropheight - coverbleed)
-        p.stroke()
+            p.setlinewidth(0.1)
+            p.setcolor("stroke", "rgb", 0, 0, 0, 0)
+            'left bottom vertical
+            p.moveto(coverbleed, cropheight)
+            p.lineto(coverbleed, cropheight - coverbleed + 2)
+            p.stroke()
 
-        p.setlinewidth(0.1)
-        p.setcolor("stroke", "rgb", 0, 0, 0, 0)
-        'left bottom horizontal
-        p.moveto(0, cropheight - coverbleed)
-        p.lineto(coverbleed - 2, cropheight - coverbleed)
-        p.stroke()
+            p.setlinewidth(0.3)
+            p.setcolor("stroke", "rgb", 1, 1, 1, 1)
+            'left bottom horizontal
+            p.moveto(0, cropheight - coverbleed)
+            p.lineto(coverbleed - 2, cropheight - coverbleed)
+            p.stroke()
+
+            p.setlinewidth(0.1)
+            p.setcolor("stroke", "rgb", 0, 0, 0, 0)
+            'left bottom horizontal
+            p.moveto(0, cropheight - coverbleed)
+            p.lineto(coverbleed - 2, cropheight - coverbleed)
+            p.stroke()
+
+        End If
 
         p.end_page_ext("")
 
@@ -2838,8 +2850,59 @@ Class MainWindow
 
         Me.Content = Nothing
 
+        If currentOrder.status = "startJPG" Then
+
+            ConvertToJpgCover(pdf_createfolder, cover_filename)
+
+        End If
+
         CreatePageBlock()
 
+    End Sub
+
+    Private Sub ConvertToJpgCover(sourcefolder As String, source As String)
+
+        Dim myguid = Guid.NewGuid().ToString()
+        Dim batchFilePath = Convert.ToString(sourcefolder + myguid) & ".bat"
+        Dim cmd = "convert -density 300 " & sourcefolder & source & " " & sourcefolder & "cover.jpg"
+        CreateBatchFile(cmd, batchFilePath)
+        ' Temporary Batch file
+        RunBatchFile(batchFilePath)
+        DeleteBatchFile(batchFilePath)
+    End Sub
+
+    Private Sub ConvertToJpgPages(sourcefolder As String, source As String)
+
+        Dim myguid = Guid.NewGuid().ToString()
+        Dim batchFilePath = Convert.ToString(sourcefolder + myguid) & ".bat"
+        Dim cmd = "convert -density 300 " & sourcefolder & source & " " & sourcefolder & "page-%02d.jpg"
+        CreateBatchFile(cmd, batchFilePath)
+        ' Temporary Batch file
+        RunBatchFile(batchFilePath)
+        DeleteBatchFile(batchFilePath)
+    End Sub
+
+    Private Shared Sub RunBatchFile(batFilePath As String)
+        Dim myProcess = New Process()
+        myProcess.StartInfo.FileName = batFilePath
+        myProcess.StartInfo.WindowStyle = ProcessWindowStyle.Hidden
+        myProcess.StartInfo.CreateNoWindow = True
+        myProcess.StartInfo.UseShellExecute = False
+        myProcess.StartInfo.WorkingDirectory = "C:\Program Files\ImageMagick-6.9.3-Q16"
+        myProcess.Start()
+        myProcess.WaitForExit()
+    End Sub
+
+    Private Shared Sub DeleteBatchFile(file__1 As String)
+        File.Delete(file__1)
+    End Sub
+
+    Private Shared Sub CreateBatchFile(input As String, filePath As String)
+        Dim fs As New FileStream(filePath, FileMode.Create)
+        Dim writer As New StreamWriter(fs)
+        writer.WriteLine(input)
+        writer.Close()
+        fs.Close()
     End Sub
 
     Private Function CreateTextLines(id As String, posx As Double, posy As Double, r As Double) As Boolean
@@ -2873,7 +2936,7 @@ Class MainWindow
 
                             Dim lastx As Double = posx
 
-                            Dim nodes As XmlNodeList = textline.SelectNodes("descendant::span")
+                            Dim nodes As XmlNodeList = textline.SelectNodes("descendant:: Span")
                             Dim finalStr As String = ""
                             Dim tf As Integer = -1
                             Dim leading As Double = 0
@@ -2892,12 +2955,12 @@ Class MainWindow
                                     leading = check
                                 End If
 
-                                Dim tempoptlist As String = " encoding=unicode embedding=true fontsize=" & node.Attributes.GetNamedItem("corps").Value.ToString & " " & GetColorStringRgb(node.Attributes.GetNamedItem("color").Value.ToString)
+                                Dim tempoptlist As String = " encoding=unicode embedding=True fontsize=" & node.Attributes.GetNamedItem("corps").Value.ToString & " " & GetColorStringRgb(node.Attributes.GetNamedItem("color").Value.ToString)
 
                                 Debug.Print(tempoptlist)
 
                                 If Not IsNothing(node.Attributes.GetNamedItem("underline").Value) Then
-                                    If node.Attributes.GetNamedItem("underline").Value.ToString = "true" Then
+                                    If node.Attributes.GetNamedItem("underline").Value.ToString = "True" Then
                                         tempoptlist += " underline"
                                     End If
                                 End If
@@ -3014,14 +3077,14 @@ Class MainWindow
         If p Is Nothing Then
             p = New PDFlib()
             p.set_parameter("license", "W800102-010000-126165-VAUBF2-MAQC32")
-            p.set_parameter("errorpolicy", "return")
+            p.set_parameter("errorpolicy", "Return")
             p.set_info("Creator", "Fotoalbum PDF Generator")
             p.set_info("Title", "Fotoalbum PDF Generator")
-            p.set_parameter("charref", "true")
+            p.set_parameter("charref", "True")
             p.set_parameter("SearchPath", exportfolder)
             p.set_parameter("SearchPath", searchpath_fontfolder)
-            p.set_parameter("escapesequence", "false")
-            p.set_parameter("usercoordinates", "true")
+            p.set_parameter("escapesequence", "False")
+            p.set_parameter("usercoordinates", "True")
 
             p.begin_document(pdf_createfolder & bblock_filename, "compatibility=" & pdfcompatible)
 
@@ -3204,6 +3267,16 @@ Class MainWindow
         End If
 
         '==============================================================================
+        ' Save the content of the PDF BBlock to separate JPG's and store the content in webprintDoc
+        '==============================================================================
+        If currentOrder.status = "startJPG" Then
+
+            'Open the PDF and save the content as an image! Store this image in the webprintDoc!
+            ConvertToJpgPages(pdf_createfolder, bblock_filename)
+
+        End If
+
+        '==============================================================================
         ' Update the order with the new result and filenames etc
         '==============================================================================
         Dim sqlStr As String
@@ -3216,7 +3289,7 @@ Class MainWindow
         Dim connStringSQL As New MySqlConnection(mySqlConnection)
         Dim myCommand As New MySqlCommand(sqlStr, connStringSQL)
         myCommand.Connection.Open()
-        myCommand.ExecuteScalar()
+        'myCommand.ExecuteScalar()
         myCommand.Connection.Close()
 
         'Send an email to Maurice to check the PDF!
@@ -3393,9 +3466,6 @@ Class MainWindow
 
     Public Sub SaveCover()
 
-        'savecovertimer.Stop()
-        'savecovertimer = Nothing
-
         Try
 
             Dim filename As String = exportfolder & spreadLst(renderindex).Attributes.GetNamedItem("spreadID").Value & ".jpg"
@@ -3534,9 +3604,23 @@ Class MainWindow
 
     Public Function GetColorStringRgb(color As String) As String
 
-        Dim c As Color = System.Drawing.Color.FromArgb(Integer.Parse(color))
+        Dim rgb As String = " fillcolor={rgb 0 0 0}"
 
-        Dim rgb As String = " fillcolor={rgb " & c.R / 255 & " " & c.G / 255 & " " & c.B / 255 & "}"
+        Try
+
+            Dim c As Color = System.Drawing.Color.FromArgb(Integer.Parse(color))
+
+            rgb = " fillcolor={rgb " & c.R / 255 & " " & c.G / 255 & " " & c.B / 255 & "}"
+
+            Return rgb
+
+
+        Catch ex As Exception
+
+            'Nothing for now
+            Debug.Print(ex.Message)
+
+        End Try
 
         Return rgb
 
@@ -3632,9 +3716,9 @@ Class MainWindow
 
         For Each row As DataRow In dt.Rows
             'Dim hires As String = row("hires")
-            'Dim thumb As String = "thumb_" & hires
+            'Dim hires As String = "hires_" & hires
             'Dim url As String = row("url")
-            'url = url.Replace(hires, thumb)
+            'url = url.Replace(hires, hires)
             'Debug.Print("GetFileUrl : " & url)
             'result.Add(url)
 
