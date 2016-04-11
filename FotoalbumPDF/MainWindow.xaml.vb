@@ -27,14 +27,14 @@ Class MainWindow
     Public exportfolder As String = ""
 
     '******** DEBUG *********
-    Public original_exportfolder As String = "C:\PDF_Debug\"
-    Public pdf_createfolder As String = "C:\PDF_Debug\"
+    'Public original_exportfolder As String = "C:\PDF_Debug\"
+    'Public pdf_createfolder As String = "C:\PDF_Debug\"
 
     Public targetDPI As Integer = 300
 
     '******** PRODUCTION *********
-    'Public original_exportfolder As String = "C:\Users\Administrator\Documents\DONOTREMOVE\FA_ASSETS_PRERENDER\"
-    'Public pdf_createfolder As String = "N:\XHIBIT\www.xhibit.com\pdfexports_xhibit\"
+    Public original_exportfolder As String = "C:\Users\Administrator\Documents\DONOTREMOVE\FA_ASSETS_PRERENDER\"
+    Public pdf_createfolder As String = "N:\XHIBIT\www.xhibit.com\pdfexports_xhibit\"
 
     '******** PDF *********
     Private p As PDFlib_dotnet.PDFlib
@@ -96,7 +96,7 @@ Class MainWindow
 
             Dim query As String = "SELECT o.id, o.status, o.order_id,  u.product_id, u.user_product_id, u.pages_xml, u.textflow_xml, u.textlines_xml, u.photo_xml, u.color_xml FROM pdfengine_order_pdfs o " &
                                   "LEFT OUTER JOIN pdfengine_order_pdf_user_products u ON u.id = o.order_pdf_user_product_id " &
-                                  "WHERE o.status='startJPG'"
+                                  "WHERE o.status='start' OR o.status='startJPG'"
 
             Dim connStringSQL As New MySqlConnection(mySqlConnection)
             Dim myAdapter As New MySqlDataAdapter(query, connStringSQL)
@@ -359,6 +359,249 @@ Class MainWindow
 
             End If
 
+            'Add separate backgrounds if available
+            Dim xpos As Double = 0
+
+            For Each page As XmlNode In pages
+
+                Dim position As String = "center"
+
+                Dim pageID As String = page.Attributes.GetNamedItem("pageID").Value
+                If page.Attributes.GetNamedItem("pageType").Value.ToString = "coverback" Then
+                    spineX = (XmlConvert.ToDouble(page.Attributes.GetNamedItem("pageWidth").Value) * (targetDPI / 96)) + coverbleed + coverwrap
+                End If
+
+                If page.Attributes.GetNamedItem("pageType").Value.ToString = "coverspine" Then
+                    spineX += (XmlConvert.ToDouble(page.Attributes.GetNamedItem("pageWidth").Value) * (targetDPI / 96)) / 2
+                End If
+
+                Dim pagewidth As Double = XmlConvert.ToDouble(page.Attributes.GetNamedItem("pageWidth").Value) * (targetDPI / 96)
+                Dim pageheight As Double = (XmlConvert.ToDouble(page.Attributes.GetNamedItem("pageHeight").Value) * (targetDPI / 96)) + (coverbleed * 2) + (coverwrap * 2)
+                If page.Attributes.GetNamedItem("pageType").Value.ToString <> "coverspine" Then
+                    pagewidth += coverbleed + coverwrap
+                End If
+
+                If page.Attributes.GetNamedItem("backgroundColor").Value.ToString <> "-1" Then
+
+                    If spread.SelectSingleNode("background") Is Nothing Then
+
+                        Dim fillArr As ArrayList = GetColorRgb(page.Attributes.GetNamedItem("backgroundColor").Value.ToString)
+
+                        Dim bg As New System.Windows.Shapes.Rectangle
+                        bg.Width = pagewidth
+                        If page.Attributes.GetNamedItem("pageType").Value.ToString = "coverspine" Then
+                            bg.Width += 2 * (targetDPI / 96)
+                        End If
+                        bg.Height = pageheight
+                        bg.Fill = New SolidColorBrush(System.Windows.Media.Color.FromRgb(fillArr(0), fillArr(1), fillArr(2)))
+                        bg.HorizontalAlignment = Windows.HorizontalAlignment.Left
+                        bg.VerticalAlignment = Windows.VerticalAlignment.Top
+                        'bg.StrokeThickness = 0
+                        'bg.Stroke = New SolidColorBrush(Color.FromRgb(0, 0, 0))
+                        bg.RadiusX = 0
+                        bg.RadiusY = 0
+                        If page.Attributes.GetNamedItem("pageType").Value.ToString = "coverspine" Then
+                            bg.Margin = New Thickness(xpos - (targetDPI / 96), 0, 0, 0)
+                        Else
+                            bg.Margin = New Thickness(xpos, 0, 0, 0)
+                        End If
+                        mainspread.Children.Add(bg)
+
+                    End If
+
+                End If
+
+                If Not page.SelectSingleNode("background") Is Nothing Then
+
+                    If spread.SelectSingleNode("background") Is Nothing Then
+
+                        Dim background As XmlNode = page.SelectSingleNode("background")
+
+                        Dim filename As String
+                        Dim continueImage As Boolean = True
+
+                        If background.Attributes.GetNamedItem("status").Value <> "done" Then
+                            If background.Attributes.GetNamedItem("status").Value = "new" Then
+                                'Get the filedata from the upload, if its available
+                                Dim arr As ArrayList = GetFileUrlFromUpload(background.Attributes.GetNamedItem("id").Value)
+                                If arr.Count > 0 Then
+                                    filename = searchpath_imagefolder & arr(0)
+                                    filename = filename.Replace("\", "/")
+                                Else
+                                    continueImage = False
+                                End If
+                            ElseIf background.Attributes.GetNamedItem("status").Value = "empty" Or background.Attributes.GetNamedItem("status").Value = "" Then
+                                continueImage = False
+                            End If
+                        Else
+                            filename = searchpath_imagefolder & background.Attributes.GetNamedItem("hires_url").Value
+                            filename = filename.Replace("\", "/")
+                        End If
+
+                        If (continueImage) Then
+
+                            Dim alpha As Double = XmlConvert.ToDouble(page.Attributes.GetNamedItem("backgroundAlpha").Value.ToString)
+                            Dim fliphorizontal As Integer = 0
+                            If background.Attributes.GetNamedItem("fliphorizontal").Value <> "" Then
+                                fliphorizontal = XmlConvert.ToInt32(background.Attributes.GetNamedItem("fliphorizontal").Value)
+                            End If
+                            Dim imgRotation As Integer = XmlConvert.ToInt32(background.Attributes.GetNamedItem("imageRotation").Value)
+                            Dim imgWidth As Double = XmlConvert.ToDouble(background.Attributes.GetNamedItem("width").Value) * (targetDPI / 96)
+                            Dim imgHeight As Double = XmlConvert.ToDouble(background.Attributes.GetNamedItem("height").Value) * (targetDPI / 96)
+                            Dim offsetX As Double = XmlConvert.ToDouble(background.Attributes.GetNamedItem("x").Value) * (targetDPI / 96)
+                            Dim offsetY As Double = XmlConvert.ToDouble(background.Attributes.GetNamedItem("y").Value) * (targetDPI / 96)
+
+                            Dim c As New WebClient()
+                            Dim bytes = c.DownloadData(New Uri(filename))
+                            Dim ms As New MemoryStream(bytes)
+
+                            Dim src As BitmapImage = New BitmapImage
+                            src.BeginInit()
+                            src.CreateOptions = BitmapCreateOptions.PreservePixelFormat Or BitmapCreateOptions.IgnoreColorProfile
+                            src.StreamSource = ms
+                            src.CacheOption = BitmapCacheOption.None
+                            Select Case imgRotation
+                                Case 90
+
+                                    src.Rotation = Rotation.Rotate90
+
+                                    Dim iw As Double = imgWidth
+                                    Dim xo As Double = offsetX
+
+                                    imgWidth = imgHeight
+                                    imgHeight = iw
+
+                                    'Check if the image was flipped
+                                    If fliphorizontal = 0 Then
+                                        offsetX = width - (imgWidth + offsetY)
+                                        offsetY = xo
+                                    Else
+                                        offsetX = width - (imgWidth + offsetY)
+                                        offsetY = height - (imgHeight + xo)
+                                    End If
+
+                                Case 180
+
+                                    src.Rotation = Rotation.Rotate180
+
+                                    If fliphorizontal = 0 Then
+                                        offsetX = width - (imgWidth + offsetX)
+                                        offsetY = height - (imgHeight + offsetY)
+                                    Else
+                                        offsetY = height - (imgHeight + offsetY)
+                                    End If
+
+                                Case 270
+
+                                    src.Rotation = Rotation.Rotate270
+
+                                    Dim iw As Double = imgWidth
+                                    Dim xo As Double = offsetX
+
+                                    imgWidth = imgHeight
+                                    imgHeight = iw
+
+                                    'Check if the image was flipped
+                                    If fliphorizontal = 0 Then
+                                        offsetX = offsetY
+                                        offsetY = height - (imgHeight + xo)
+                                    Else
+                                        offsetX = offsetY
+                                        offsetY = xo
+                                    End If
+
+                                Case -90
+
+                                    src.Rotation = Rotation.Rotate270
+
+                                    Dim iw As Double = imgWidth
+                                    Dim xo As Double = offsetX
+
+                                    imgWidth = imgHeight
+                                    imgHeight = iw
+
+                                    'Check if the image was flipped
+                                    If fliphorizontal = 0 Then
+                                        offsetX = offsetY
+                                        offsetY = height - (imgHeight + xo)
+                                    Else
+                                        offsetX = offsetY
+                                        offsetY = xo
+                                    End If
+
+                                Case 0
+
+                                    src.Rotation = Rotation.Rotate0
+
+                            End Select
+                            src.EndInit()
+
+                            Dim placeholder As New Canvas
+                            placeholder.Width = pagewidth
+                            placeholder.Height = pageheight
+                            placeholder.HorizontalAlignment = Windows.HorizontalAlignment.Left
+                            placeholder.VerticalAlignment = Windows.VerticalAlignment.Top
+                            placeholder.Margin = New Thickness(xpos, 0, 0, 0)
+                            placeholder.ClipToBounds = True
+                            mainspread.Children.Add(placeholder)
+
+                            Dim srcimg As New System.Windows.Controls.Image
+                            RenderOptions.SetBitmapScalingMode(srcimg, BitmapScalingMode.Fant)
+                            Select Case background.Attributes.GetNamedItem("imageFilter").Value
+                                Case "" 'Default
+                                    srcimg.Source = src
+                                Case "bw"
+                                    srcimg.Source = MakeGrayscale(src)
+                                Case "sepia"
+                                    srcimg.Source = src
+                            End Select
+
+                            If fliphorizontal = 1 Then
+                                srcimg.RenderTransformOrigin = New System.Windows.Point(0.5, 0.5)
+                                Dim flip As New ScaleTransform()
+                                Select Case imgRotation
+                                    Case 0
+                                        offsetX = width - (imgWidth + offsetX)
+                                        flip.ScaleX = -1
+                                    Case 90
+                                        flip.ScaleY = -1
+                                    Case 180
+                                        flip.ScaleX = -1
+                                    Case 270
+                                        flip.ScaleY = -1
+                                End Select
+                                srcimg.RenderTransform = flip
+                            End If
+
+                            srcimg.HorizontalAlignment = Windows.HorizontalAlignment.Left
+                            srcimg.VerticalAlignment = Windows.VerticalAlignment.Top
+                            srcimg.Width = imgWidth
+                            srcimg.Height = imgHeight
+                            srcimg.Margin = New Thickness(offsetX, offsetY, 0, 0)
+
+                            If alpha < 1 Then
+                                srcimg.Opacity = alpha
+                            End If
+
+                            If background.Attributes.GetNamedItem("imageFilter").Value = "sepia" Then
+                                srcimg = MakeSepia(srcimg)
+                            End If
+
+                            placeholder.Children.Add(srcimg)
+                            placeholder.UpdateLayout()
+                        Else
+                            If background.Attributes.GetNamedItem("status").Value <> "empty" Then
+                                Throw New Exception("No source found!! " + background.OuterXml)
+                            End If
+                        End If
+                    End If
+
+                End If
+
+                xpos += pagewidth
+
+            Next
+
             If Not spread.SelectSingleNode("background") Is Nothing Then
 
                 Dim background As XmlNode = spread.SelectSingleNode("background")
@@ -486,6 +729,10 @@ Class MainWindow
                     placeholder.Width = width
                     placeholder.Height = height
                     placeholder.ClipToBounds = True
+                    placeholder.HorizontalAlignment = Windows.HorizontalAlignment.Left
+                    placeholder.VerticalAlignment = Windows.VerticalAlignment.Top
+                    placeholder.Margin = New Thickness(0, 0, 0, 0)
+                    placeholder.ClipToBounds = True
                     mainspread.Children.Add(placeholder)
 
                     Dim srcimg As New System.Windows.Controls.Image
@@ -532,249 +779,13 @@ Class MainWindow
 
                     placeholder.Children.Add(srcimg)
                     placeholder.UpdateLayout()
+
                 Else
                     If background.Attributes.GetNamedItem("status").Value <> "empty" Then
                         Throw New Exception("No source found!! " + background.OuterXml)
                     End If
                 End If
             End If
-
-            'Add separate backgrounds if available
-            Dim xpos As Double = 0
-
-            For Each page As XmlNode In pages
-
-                Dim position As String = "center"
-
-                Dim pageID As String = page.Attributes.GetNamedItem("pageID").Value
-                If page.Attributes.GetNamedItem("pageType").Value.ToString = "coverback" Then
-                    spineX = (XmlConvert.ToDouble(page.Attributes.GetNamedItem("pageWidth").Value) * (targetDPI / 96)) + coverbleed + coverwrap
-                End If
-
-                If page.Attributes.GetNamedItem("pageType").Value.ToString = "coverspine" Then
-                    spineX += (XmlConvert.ToDouble(page.Attributes.GetNamedItem("pageWidth").Value) * (targetDPI / 96)) / 2
-                End If
-
-                Dim pagewidth As Double = XmlConvert.ToDouble(page.Attributes.GetNamedItem("pageWidth").Value) * (targetDPI / 96)
-                Dim pageheight As Double = (XmlConvert.ToDouble(page.Attributes.GetNamedItem("pageHeight").Value) * (targetDPI / 96)) + (coverbleed * 2) + (coverwrap * 2)
-                If page.Attributes.GetNamedItem("pageType").Value.ToString <> "coverspine" Then
-                    pagewidth += coverbleed + coverwrap
-                End If
-
-                If page.Attributes.GetNamedItem("backgroundColor").Value.ToString <> "-1" Then
-
-                    Dim fillArr As ArrayList = GetColorRgb(page.Attributes.GetNamedItem("backgroundColor").Value.ToString)
-
-                    Dim bg As New System.Windows.Shapes.Rectangle
-                    bg.Width = pagewidth
-                    If page.Attributes.GetNamedItem("pageType").Value.ToString = "coverspine" Then
-                        bg.Width += 2 * (targetDPI / 96)
-                    End If
-                    bg.Height = pageheight
-                    bg.Fill = New SolidColorBrush(System.Windows.Media.Color.FromRgb(fillArr(0), fillArr(1), fillArr(2)))
-                    bg.HorizontalAlignment = Windows.HorizontalAlignment.Left
-                    bg.VerticalAlignment = Windows.VerticalAlignment.Top
-                    'bg.StrokeThickness = 0
-                    'bg.Stroke = New SolidColorBrush(Color.FromRgb(0, 0, 0))
-                    bg.RadiusX = 0
-                    bg.RadiusY = 0
-                    If page.Attributes.GetNamedItem("pageType").Value.ToString = "coverspine" Then
-                        bg.Margin = New Thickness(xpos - (targetDPI / 96), 0, 0, 0)
-                    Else
-                        bg.Margin = New Thickness(xpos, 0, 0, 0)
-                    End If
-                    mainspread.Children.Add(bg)
-
-                End If
-
-                If Not page.SelectSingleNode("background") Is Nothing Then
-
-                    Dim background As XmlNode = page.SelectSingleNode("background")
-
-                    Dim filename As String
-                    Dim continueImage As Boolean = True
-
-                    If background.Attributes.GetNamedItem("status").Value <> "done" Then
-                        If background.Attributes.GetNamedItem("status").Value = "new" Then
-                            'Get the filedata from the upload, if its available
-                            Dim arr As ArrayList = GetFileUrlFromUpload(background.Attributes.GetNamedItem("id").Value)
-                            If arr.Count > 0 Then
-                                filename = searchpath_imagefolder & arr(0)
-                                filename = filename.Replace("\", "/")
-                            Else
-                                continueImage = False
-                            End If
-                        ElseIf background.Attributes.GetNamedItem("status").Value = "empty" Or background.Attributes.GetNamedItem("status").Value = "" Then
-                            continueImage = False
-                        End If
-                    Else
-                        filename = searchpath_imagefolder & background.Attributes.GetNamedItem("hires_url").Value
-                        filename = filename.Replace("\", "/")
-                    End If
-
-                    If (continueImage) Then
-
-                        Dim alpha As Double = XmlConvert.ToDouble(page.Attributes.GetNamedItem("backgroundAlpha").Value.ToString)
-                        Dim fliphorizontal As Integer = 0
-                        If background.Attributes.GetNamedItem("fliphorizontal").Value <> "" Then
-                            fliphorizontal = XmlConvert.ToInt32(background.Attributes.GetNamedItem("fliphorizontal").Value)
-                        End If
-                        Dim imgRotation As Integer = XmlConvert.ToInt32(background.Attributes.GetNamedItem("imageRotation").Value)
-                        Dim imgWidth As Double = XmlConvert.ToDouble(background.Attributes.GetNamedItem("width").Value) * (targetDPI / 96)
-                        Dim imgHeight As Double = XmlConvert.ToDouble(background.Attributes.GetNamedItem("height").Value) * (targetDPI / 96)
-                        Dim offsetX As Double = XmlConvert.ToDouble(background.Attributes.GetNamedItem("x").Value) * (targetDPI / 96)
-                        Dim offsetY As Double = XmlConvert.ToDouble(background.Attributes.GetNamedItem("y").Value) * (targetDPI / 96)
-
-                        Dim c As New WebClient()
-                        Dim bytes = c.DownloadData(New Uri(filename))
-                        Dim ms As New MemoryStream(bytes)
-
-                        Dim src As BitmapImage = New BitmapImage
-                        src.BeginInit()
-                        src.CreateOptions = BitmapCreateOptions.PreservePixelFormat Or BitmapCreateOptions.IgnoreColorProfile
-                        src.StreamSource = ms
-                        src.CacheOption = BitmapCacheOption.None
-                        Select Case imgRotation
-                            Case 90
-
-                                src.Rotation = Rotation.Rotate90
-
-                                Dim iw As Double = imgWidth
-                                Dim xo As Double = offsetX
-
-                                imgWidth = imgHeight
-                                imgHeight = iw
-
-                                'Check if the image was flipped
-                                If fliphorizontal = 0 Then
-                                    offsetX = width - (imgWidth + offsetY)
-                                    offsetY = xo
-                                Else
-                                    offsetX = width - (imgWidth + offsetY)
-                                    offsetY = height - (imgHeight + xo)
-                                End If
-
-                            Case 180
-
-                                src.Rotation = Rotation.Rotate180
-
-                                If fliphorizontal = 0 Then
-                                    offsetX = width - (imgWidth + offsetX)
-                                    offsetY = height - (imgHeight + offsetY)
-                                Else
-                                    offsetY = height - (imgHeight + offsetY)
-                                End If
-
-                            Case 270
-
-                                src.Rotation = Rotation.Rotate270
-
-                                Dim iw As Double = imgWidth
-                                Dim xo As Double = offsetX
-
-                                imgWidth = imgHeight
-                                imgHeight = iw
-
-                                'Check if the image was flipped
-                                If fliphorizontal = 0 Then
-                                    offsetX = offsetY
-                                    offsetY = height - (imgHeight + xo)
-                                Else
-                                    offsetX = offsetY
-                                    offsetY = xo
-                                End If
-
-                            Case -90
-
-                                src.Rotation = Rotation.Rotate270
-
-                                Dim iw As Double = imgWidth
-                                Dim xo As Double = offsetX
-
-                                imgWidth = imgHeight
-                                imgHeight = iw
-
-                                'Check if the image was flipped
-                                If fliphorizontal = 0 Then
-                                    offsetX = offsetY
-                                    offsetY = height - (imgHeight + xo)
-                                Else
-                                    offsetX = offsetY
-                                    offsetY = xo
-                                End If
-
-                            Case 0
-
-                                src.Rotation = Rotation.Rotate0
-
-                        End Select
-                        src.EndInit()
-
-                        Dim placeholder As New Canvas
-                        placeholder.Width = pagewidth
-                        placeholder.Height = pageheight
-                        placeholder.HorizontalAlignment = Windows.HorizontalAlignment.Left
-                        placeholder.VerticalAlignment = Windows.VerticalAlignment.Top
-                        placeholder.Margin = New Thickness(xpos, 0, 0, 0)
-                        placeholder.ClipToBounds = True
-                        mainspread.Children.Add(placeholder)
-
-                        Dim srcimg As New System.Windows.Controls.Image
-                        RenderOptions.SetBitmapScalingMode(srcimg, BitmapScalingMode.Fant)
-                        Select Case background.Attributes.GetNamedItem("imageFilter").Value
-                            Case "" 'Default
-                                srcimg.Source = src
-                            Case "bw"
-                                srcimg.Source = MakeGrayscale(src)
-                            Case "sepia"
-                                srcimg.Source = src
-                        End Select
-
-                        If fliphorizontal = 1 Then
-                            srcimg.RenderTransformOrigin = New System.Windows.Point(0.5, 0.5)
-                            Dim flip As New ScaleTransform()
-                            Select Case imgRotation
-                                Case 0
-                                    offsetX = width - (imgWidth + offsetX)
-                                    flip.ScaleX = -1
-                                Case 90
-                                    flip.ScaleY = -1
-                                Case 180
-                                    flip.ScaleX = -1
-                                Case 270
-                                    flip.ScaleY = -1
-                            End Select
-                            srcimg.RenderTransform = flip
-                        End If
-
-                        srcimg.HorizontalAlignment = Windows.HorizontalAlignment.Left
-                        srcimg.VerticalAlignment = Windows.VerticalAlignment.Top
-                        srcimg.Width = XmlConvert.ToDouble(background.Attributes.GetNamedItem("width").Value) * (targetDPI / 96)
-                        srcimg.Height = XmlConvert.ToDouble(background.Attributes.GetNamedItem("height").Value) * (targetDPI / 96)
-                        srcimg.Margin = New Thickness(XmlConvert.ToDouble(background.Attributes.GetNamedItem("x").Value) * (targetDPI / 96),
-                        XmlConvert.ToDouble(background.Attributes.GetNamedItem("y").Value) * (targetDPI / 96),
-                                0, 0)
-
-                        If alpha < 1 Then
-                            srcimg.Opacity = alpha
-                        End If
-
-                        If background.Attributes.GetNamedItem("imageFilter").Value = "sepia" Then
-                            srcimg = MakeSepia(srcimg)
-                        End If
-
-                        placeholder.Children.Add(srcimg)
-                        placeholder.UpdateLayout()
-                    Else
-                        If background.Attributes.GetNamedItem("status").Value <> "empty" Then
-                            Throw New Exception("No source found!! " + background.OuterXml)
-                        End If
-                    End If
-                End If
-
-                xpos += pagewidth
-
-            Next
 
             'Add the elements
             Dim elements As XmlNodeList = spread.SelectSingleNode("elements").SelectNodes("element")
@@ -1501,6 +1512,261 @@ Class MainWindow
 
             End If
 
+            'Add separate backgrounds if available
+            Dim xpos As Double = 0
+            Dim spineX As Double = 0
+
+            For Each page As XmlNode In pages
+
+                Dim position As String = "center"
+
+                Dim pageID As String = page.Attributes.GetNamedItem("pageID").Value
+                Dim pagewidth As Double = XmlConvert.ToDouble(page.Attributes.GetNamedItem("width").Value) * (targetDPI / 96)
+                Dim pageheight As Double = XmlConvert.ToDouble(page.Attributes.GetNamedItem("height").Value) * (targetDPI / 96)
+
+                If page.Attributes.GetNamedItem("backgroundColor").Value.ToString <> "-1" Then
+
+                    If spread.SelectSingleNode("background") Is Nothing Then
+
+                        Dim fillArr As ArrayList = GetColorRgb(page.Attributes.GetNamedItem("backgroundColor").Value.ToString)
+
+                        Dim bg As New Canvas
+                        bg.Width = pagewidth
+                        bg.Height = pageheight
+                        bg.Background = New SolidColorBrush(System.Windows.Media.Color.FromRgb(fillArr(0), fillArr(1), fillArr(2)))
+                        bg.HorizontalAlignment = Windows.HorizontalAlignment.Left
+                        bg.VerticalAlignment = Windows.VerticalAlignment.Top
+                        If isLayFlat And layflatmargin > 0 Then
+                            bg.Margin = New Thickness(layflatmargin, 0, 0, 0)
+                        Else
+                            bg.Margin = New Thickness(xpos, 0, 0, 0)
+                        End If
+
+                        mainspread.Children.Add(bg)
+
+                    End If
+
+                End If
+
+                If isLayFlat = True And renderindex = spreadLst.Count - 1 Then
+
+                    'Force a white background for the right page
+                    Dim bg As New Canvas
+                    bg.Width = pagewidth
+                    bg.Height = pageheight
+                    bg.Background = New SolidColorBrush(System.Windows.Media.Color.FromRgb(255, 255, 255))
+                    bg.HorizontalAlignment = Windows.HorizontalAlignment.Right
+                    bg.VerticalAlignment = Windows.VerticalAlignment.Top
+                    bg.Margin = New Thickness(pagewidth, 0, 0, 0)
+                    mainspread.Children.Add(bg)
+
+                End If
+
+                If Not page.SelectSingleNode("background") Is Nothing Then
+
+                    If spread.SelectSingleNode("background") Is Nothing Then
+
+                        Dim background As XmlNode = page.SelectSingleNode("background")
+
+                        Dim filename As String
+                        Dim continueImage As Boolean = True
+
+                        If background.Attributes.GetNamedItem("status").Value <> "done" Then
+                            If background.Attributes.GetNamedItem("status").Value = "new" Or
+                                background.Attributes.GetNamedItem("status").Value = "" Then
+                                'Get the filedata from the upload, if its available
+                                Dim arr As ArrayList = GetFileUrlFromUpload(background.Attributes.GetNamedItem("id").Value)
+                                If arr.Count > 0 Then
+                                    filename = searchpath_imagefolder & arr(0)
+                                    filename = filename.Replace("\", "/")
+                                Else
+                                    continueImage = False
+                                End If
+                            ElseIf background.Attributes.GetNamedItem("status").Value = "empty" Then
+                                continueImage = False
+                            End If
+                        Else
+                            filename = searchpath_imagefolder & background.Attributes.GetNamedItem("hires_url").Value
+                            filename = filename.Replace("\", "/")
+                        End If
+
+                        If (continueImage) Then
+
+                            Dim alpha As Double = XmlConvert.ToDouble(page.Attributes.GetNamedItem("backgroundAlpha").Value.ToString)
+                            Dim fliphorizontal As Integer = 0
+                            If background.Attributes.GetNamedItem("fliphorizontal").Value <> "" Then
+                                fliphorizontal = XmlConvert.ToInt32(background.Attributes.GetNamedItem("fliphorizontal").Value)
+                            End If
+                            Dim imgRotation As Integer = XmlConvert.ToInt32(background.Attributes.GetNamedItem("imageRotation").Value)
+                            Dim imgWidth As Double = XmlConvert.ToDouble(background.Attributes.GetNamedItem("width").Value) * (targetDPI / 96)
+                            Dim imgHeight As Double = XmlConvert.ToDouble(background.Attributes.GetNamedItem("height").Value) * (targetDPI / 96)
+                            Dim offsetX As Double = XmlConvert.ToDouble(background.Attributes.GetNamedItem("x").Value) * (targetDPI / 96)
+                            Dim offsetY As Double = XmlConvert.ToDouble(background.Attributes.GetNamedItem("y").Value) * (targetDPI / 96)
+
+                            Dim c As New WebClient()
+                            Dim bytes = c.DownloadData(New Uri(filename))
+                            Dim ms As New MemoryStream(bytes)
+
+                            Dim src As BitmapImage = New BitmapImage
+                            src.BeginInit()
+                            src.CreateOptions = BitmapCreateOptions.PreservePixelFormat Or BitmapCreateOptions.IgnoreColorProfile
+                            src.StreamSource = ms
+                            src.CacheOption = BitmapCacheOption.None
+
+                            Select Case imgRotation
+
+                                Case 90
+
+                                    src.Rotation = Rotation.Rotate90
+
+                                    Dim iw As Double = imgWidth
+                                    Dim xo As Double = offsetX
+
+                                    imgWidth = imgHeight
+                                    imgHeight = iw
+
+                                    'Check if the image was flipped
+                                    If fliphorizontal = 0 Then
+                                        offsetX = pagewidth - (imgWidth + offsetY)
+                                        offsetY = xo
+                                    Else
+                                        offsetX = pagewidth - (imgWidth + offsetY)
+                                        offsetY = pageheight - (imgHeight + xo)
+                                    End If
+
+                                Case 180
+
+                                    src.Rotation = Rotation.Rotate180
+
+                                    If fliphorizontal = 0 Then
+                                        offsetX = pagewidth - (imgWidth + offsetX)
+                                        offsetY = pageheight - (imgHeight + offsetY)
+                                    Else
+                                        offsetY = pageheight - (imgHeight + offsetY)
+                                    End If
+
+                                Case 270
+
+                                    src.Rotation = Rotation.Rotate270
+
+                                    Dim iw As Integer = imgWidth
+                                    Dim xo As Integer = offsetX
+
+                                    imgWidth = imgHeight
+                                    imgHeight = iw
+
+                                    'Check if the image was flipped
+                                    If fliphorizontal = 0 Then
+                                        offsetX = offsetY
+                                        offsetY = pageheight - (imgHeight + xo)
+                                    Else
+                                        offsetX = offsetY
+                                        offsetY = xo
+                                    End If
+
+                                Case -90
+
+                                    src.Rotation = Rotation.Rotate270
+
+                                    Dim iw As Integer = imgWidth
+                                    Dim xo As Integer = offsetX
+
+                                    imgWidth = imgHeight
+                                    imgHeight = iw
+
+                                    'Check if the image was flipped
+                                    If fliphorizontal = 0 Then
+                                        offsetX = offsetY
+                                        offsetY = pageheight - (imgHeight + xo)
+                                    Else
+                                        offsetX = offsetY
+                                        offsetY = xo
+                                    End If
+
+                                Case 0
+
+                                    src.Rotation = Rotation.Rotate0
+
+                            End Select
+                            src.EndInit()
+
+                            Dim placeholder As New Canvas
+                            placeholder.Width = pagewidth
+                            placeholder.Height = pageheight
+                            placeholder.HorizontalAlignment = Windows.HorizontalAlignment.Left
+                            placeholder.VerticalAlignment = Windows.VerticalAlignment.Top
+
+                            If isLayFlat And layflatmargin > 0 Then
+                                placeholder.Margin = New Thickness(layflatmargin, 0, 0, 0)
+                            Else
+                                placeholder.Margin = New Thickness(xpos, 0, 0, 0)
+                            End If
+
+                            placeholder.ClipToBounds = True
+                            mainspread.Children.Add(placeholder)
+
+                            Dim srcimg As New System.Windows.Controls.Image
+                            RenderOptions.SetBitmapScalingMode(srcimg, BitmapScalingMode.Fant)
+                            Select Case background.Attributes.GetNamedItem("imageFilter").Value
+                                Case "" 'Default
+                                    srcimg.Source = src
+                                Case "bw"
+                                    srcimg.Source = MakeGrayscale(src)
+                                Case "sepia"
+                                    srcimg.Source = src
+                            End Select
+
+                            srcimg.HorizontalAlignment = Windows.HorizontalAlignment.Left
+                            srcimg.VerticalAlignment = Windows.VerticalAlignment.Top
+                            srcimg.Width = imgWidth
+                            srcimg.Height = imgHeight
+
+                            If fliphorizontal = 1 Then
+                                srcimg.RenderTransformOrigin = New System.Windows.Point(0.5, 0.5)
+                                Dim flip As New ScaleTransform()
+                                Select Case imgRotation
+                                    Case 0
+                                        offsetX = pagewidth - (imgWidth + offsetX)
+                                        flip.ScaleX = -1
+                                    Case 90
+                                        flip.ScaleY = -1
+                                    Case 180
+                                        flip.ScaleX = -1
+                                    Case 270
+                                        flip.ScaleY = -1
+                                End Select
+                                srcimg.RenderTransform = flip
+                            End If
+
+                            srcimg.Margin = New Thickness(offsetX, offsetY, 0, 0)
+
+                            If background.Attributes.GetNamedItem("imageFilter").Value = "sepia" Then
+                                srcimg = MakeSepia(srcimg)
+                            End If
+
+                            If alpha < 1 Then
+                                srcimg.Opacity = alpha
+                            End If
+
+                            placeholder.Children.Add(srcimg)
+                            placeholder.UpdateLayout()
+
+                            ms = Nothing
+                            src = Nothing
+                            srcimg = Nothing
+
+                        Else
+                            If background.Attributes.GetNamedItem("status").Value <> "empty" Then
+                                Throw New Exception("No source found!! " + background.OuterXml)
+                            End If
+                        End If
+                    End If
+                End If
+
+                xpos += pagewidth
+
+            Next
+
             If Not spread.SelectSingleNode("background") Is Nothing Then
 
                 Dim background As XmlNode = spread.SelectSingleNode("background")
@@ -1692,252 +1958,6 @@ Class MainWindow
                     End If
                 End If
             End If
-
-            'Add separate backgrounds if available
-            Dim xpos As Double = 0
-            Dim spineX As Double = 0
-
-            For Each page As XmlNode In pages
-
-                Dim position As String = "center"
-
-                Dim pageID As String = page.Attributes.GetNamedItem("pageID").Value
-                Dim pagewidth As Double = XmlConvert.ToDouble(page.Attributes.GetNamedItem("width").Value) * (targetDPI / 96)
-                Dim pageheight As Double = XmlConvert.ToDouble(page.Attributes.GetNamedItem("height").Value) * (targetDPI / 96)
-
-                If page.Attributes.GetNamedItem("backgroundColor").Value.ToString <> "-1" Then
-
-                    Dim fillArr As ArrayList = GetColorRgb(page.Attributes.GetNamedItem("backgroundColor").Value.ToString)
-
-                    Dim bg As New Canvas
-                    bg.Width = pagewidth
-                    bg.Height = pageheight
-                    bg.Background = New SolidColorBrush(System.Windows.Media.Color.FromRgb(fillArr(0), fillArr(1), fillArr(2)))
-                    bg.HorizontalAlignment = Windows.HorizontalAlignment.Left
-                    bg.VerticalAlignment = Windows.VerticalAlignment.Top
-                    If isLayFlat And layflatmargin > 0 Then
-                        bg.Margin = New Thickness(layflatmargin, 0, 0, 0)
-                    Else
-                        bg.Margin = New Thickness(xpos, 0, 0, 0)
-                    End If
-
-                    mainspread.Children.Add(bg)
-
-                End If
-
-                If isLayFlat = True And renderindex = spreadLst.Count - 1 Then
-                    'Force a white background for the right page
-                    Dim bg As New Canvas
-                    bg.Width = pagewidth
-                    bg.Height = pageheight
-                    bg.Background = New SolidColorBrush(System.Windows.Media.Color.FromRgb(255, 255, 255))
-                    bg.HorizontalAlignment = Windows.HorizontalAlignment.Right
-                    bg.VerticalAlignment = Windows.VerticalAlignment.Top
-                    bg.Margin = New Thickness(pagewidth, 0, 0, 0)
-                    mainspread.Children.Add(bg)
-                End If
-
-                If Not page.SelectSingleNode("background") Is Nothing Then
-
-                    Dim background As XmlNode = page.SelectSingleNode("background")
-
-                    Dim filename As String
-                    Dim continueImage As Boolean = True
-
-                    If background.Attributes.GetNamedItem("status").Value <> "done" Then
-                        If background.Attributes.GetNamedItem("status").Value = "new" Or
-                            background.Attributes.GetNamedItem("status").Value = "" Then
-                            'Get the filedata from the upload, if its available
-                            Dim arr As ArrayList = GetFileUrlFromUpload(background.Attributes.GetNamedItem("id").Value)
-                            If arr.Count > 0 Then
-                                filename = searchpath_imagefolder & arr(0)
-                                filename = filename.Replace("\", "/")
-                            Else
-                                continueImage = False
-                            End If
-                        ElseIf background.Attributes.GetNamedItem("status").Value = "empty" Then
-                            continueImage = False
-                        End If
-                    Else
-                        filename = searchpath_imagefolder & background.Attributes.GetNamedItem("hires_url").Value
-                        filename = filename.Replace("\", "/")
-                    End If
-
-                    If (continueImage) Then
-
-                        Dim alpha As Double = XmlConvert.ToDouble(page.Attributes.GetNamedItem("backgroundAlpha").Value.ToString)
-                        Dim fliphorizontal As Integer = 0
-                        If background.Attributes.GetNamedItem("fliphorizontal").Value <> "" Then
-                            fliphorizontal = XmlConvert.ToInt32(background.Attributes.GetNamedItem("fliphorizontal").Value)
-                        End If
-                        Dim imgRotation As Integer = XmlConvert.ToInt32(background.Attributes.GetNamedItem("imageRotation").Value)
-                        Dim imgWidth As Double = XmlConvert.ToDouble(background.Attributes.GetNamedItem("width").Value) * (targetDPI / 96)
-                        Dim imgHeight As Double = XmlConvert.ToDouble(background.Attributes.GetNamedItem("height").Value) * (targetDPI / 96)
-                        Dim offsetX As Double = XmlConvert.ToDouble(background.Attributes.GetNamedItem("x").Value) * (targetDPI / 96)
-                        Dim offsetY As Double = XmlConvert.ToDouble(background.Attributes.GetNamedItem("y").Value) * (targetDPI / 96)
-
-                        Dim c As New WebClient()
-                        Dim bytes = c.DownloadData(New Uri(filename))
-                        Dim ms As New MemoryStream(bytes)
-
-                        Dim src As BitmapImage = New BitmapImage
-                        src.BeginInit()
-                        src.CreateOptions = BitmapCreateOptions.PreservePixelFormat Or BitmapCreateOptions.IgnoreColorProfile
-                        src.StreamSource = ms
-                        src.CacheOption = BitmapCacheOption.None
-
-                        Select Case imgRotation
-
-                            Case 90
-
-                                src.Rotation = Rotation.Rotate90
-
-                                Dim iw As Double = imgWidth
-                                Dim xo As Double = offsetX
-
-                                imgWidth = imgHeight
-                                imgHeight = iw
-
-                                'Check if the image was flipped
-                                If fliphorizontal = 0 Then
-                                    offsetX = pagewidth - (imgWidth + offsetY)
-                                    offsetY = xo
-                                Else
-                                    offsetX = pagewidth - (imgWidth + offsetY)
-                                    offsetY = pageheight - (imgHeight + xo)
-                                End If
-
-                            Case 180
-
-                                src.Rotation = Rotation.Rotate180
-
-                                If fliphorizontal = 0 Then
-                                    offsetX = pagewidth - (imgWidth + offsetX)
-                                    offsetY = pageheight - (imgHeight + offsetY)
-                                Else
-                                    offsetY = pageheight - (imgHeight + offsetY)
-                                End If
-
-                            Case 270
-
-                                src.Rotation = Rotation.Rotate270
-
-                                Dim iw As Integer = imgWidth
-                                Dim xo As Integer = offsetX
-
-                                imgWidth = imgHeight
-                                imgHeight = iw
-
-                                'Check if the image was flipped
-                                If fliphorizontal = 0 Then
-                                    offsetX = offsetY
-                                    offsetY = pageheight - (imgHeight + xo)
-                                Else
-                                    offsetX = offsetY
-                                    offsetY = xo
-                                End If
-
-                            Case -90
-
-                                src.Rotation = Rotation.Rotate270
-
-                                Dim iw As Integer = imgWidth
-                                Dim xo As Integer = offsetX
-
-                                imgWidth = imgHeight
-                                imgHeight = iw
-
-                                'Check if the image was flipped
-                                If fliphorizontal = 0 Then
-                                    offsetX = offsetY
-                                    offsetY = pageheight - (imgHeight + xo)
-                                Else
-                                    offsetX = offsetY
-                                    offsetY = xo
-                                End If
-
-                            Case 0
-
-                                src.Rotation = Rotation.Rotate0
-
-                        End Select
-                        src.EndInit()
-
-                        Dim placeholder As New Canvas
-                        placeholder.Width = pagewidth
-                        placeholder.Height = pageheight
-                        placeholder.HorizontalAlignment = Windows.HorizontalAlignment.Left
-                        placeholder.VerticalAlignment = Windows.VerticalAlignment.Top
-
-                        If isLayFlat And layflatmargin > 0 Then
-                            placeholder.Margin = New Thickness(layflatmargin, 0, 0, 0)
-                        Else
-                            placeholder.Margin = New Thickness(xpos, 0, 0, 0)
-                        End If
-
-                        placeholder.ClipToBounds = True
-                        mainspread.Children.Add(placeholder)
-
-                        Dim srcimg As New System.Windows.Controls.Image
-                        RenderOptions.SetBitmapScalingMode(srcimg, BitmapScalingMode.Fant)
-                        Select Case background.Attributes.GetNamedItem("imageFilter").Value
-                            Case "" 'Default
-                                srcimg.Source = src
-                            Case "bw"
-                                srcimg.Source = MakeGrayscale(src)
-                            Case "sepia"
-                                srcimg.Source = src
-                        End Select
-
-                        srcimg.HorizontalAlignment = Windows.HorizontalAlignment.Left
-                        srcimg.VerticalAlignment = Windows.VerticalAlignment.Top
-                        srcimg.Width = imgWidth
-                        srcimg.Height = imgHeight
-
-                        If fliphorizontal = 1 Then
-                            srcimg.RenderTransformOrigin = New System.Windows.Point(0.5, 0.5)
-                            Dim flip As New ScaleTransform()
-                            Select Case imgRotation
-                                Case 0
-                                    offsetX = pagewidth - (imgWidth + offsetX)
-                                    flip.ScaleX = -1
-                                Case 90
-                                    flip.ScaleY = -1
-                                Case 180
-                                    flip.ScaleX = -1
-                                Case 270
-                                    flip.ScaleY = -1
-                            End Select
-                            srcimg.RenderTransform = flip
-                        End If
-
-                        srcimg.Margin = New Thickness(offsetX, offsetY, 0, 0)
-
-                        If background.Attributes.GetNamedItem("imageFilter").Value = "sepia" Then
-                            srcimg = MakeSepia(srcimg)
-                        End If
-
-                        If alpha < 1 Then
-                            srcimg.Opacity = alpha
-                        End If
-
-                        placeholder.Children.Add(srcimg)
-                        placeholder.UpdateLayout()
-
-                        ms = Nothing
-                        src = Nothing
-                        srcimg = Nothing
-
-                    Else
-                        If background.Attributes.GetNamedItem("status").Value <> "empty" Then
-                            Throw New Exception("No source found!! " + background.OuterXml)
-                        End If
-                    End If
-                End If
-
-                xpos += pagewidth
-
-            Next
 
             'Add the elements
             Dim elements As XmlNodeList = spread.SelectSingleNode("elements").SelectNodes("element")
@@ -2656,7 +2676,10 @@ Class MainWindow
 
         Dim filename As String = exportfolder & spreadID & ".jpg"
 
-        p.begin_page_ext(width + (2 * coverbleed), height + (2 * coverbleed), currentpageorientation & " " & trimbox)
+        'Error extra bleed / Dont know why? Maybe Foprico needed this?
+        'p.begin_page_ext(width + (2 * coverbleed), height + (2 * coverbleed), currentpageorientation & " " & trimbox)
+
+        p.begin_page_ext(width, height, currentpageorientation & " " & trimbox)
 
         'Now load the image in the PDF
         Dim img As Integer = -1
@@ -2666,7 +2689,8 @@ Class MainWindow
         End If
 
         Dim imageopt As String = "boxsize={" & width & " " & height & "} position={center} fitmethod=slice"
-        p.fit_image(img, coverbleed, height + coverbleed, imageopt)
+        'p.fit_image(img, coverbleed, height + coverbleed, imageopt)
+        p.fit_image(img, 0, height, imageopt)
         p.close_image(img)
         img = Nothing
 
@@ -2684,15 +2708,18 @@ Class MainWindow
                 Dim tw As Double = XmlConvert.ToDouble(element.Attributes.GetNamedItem("objectWidth").Value.ToString)
                 Dim th As Double = XmlConvert.ToDouble(element.Attributes.GetNamedItem("objectHeight").Value.ToString)
 
-                If CreateTextLines(element.Attributes.GetNamedItem("tfID").Value.ToString(), posx + coverbleed, posy + coverbleed, rotation) = False Then
+                'If CreateTextLines(element.Attributes.GetNamedItem("tfID").Value.ToString(), posx + coverbleed, posy + coverbleed, rotation) = False Then
+                '    ExitOrder("Problem with text")
+                'End If
+                If CreateTextLines(element.Attributes.GetNamedItem("tfID").Value.ToString(), posx, posy, rotation) = False Then
                     ExitOrder("Problem with text")
                 End If
 
             End If
         Next
 
-        Dim cropwidth As Double = width + (2 * coverbleed)
-        Dim cropheight As Double = height + (2 * coverbleed)
+        'Dim cropwidth As Double = width + (2 * coverbleed)
+        'Dim cropheight As Double = height + (2 * coverbleed)
 
         If currentOrder.status = "start" Then
 
@@ -2742,99 +2769,99 @@ Class MainWindow
             p.setlinewidth(0.3)
             p.setcolor("stroke", "rgb", 1, 1, 1, 1)
             'right top vertical
-            p.moveto(cropwidth - coverbleed, 0)
-            p.lineto(cropwidth - coverbleed, coverbleed - 2)
+            p.moveto(width - coverbleed, 0)
+            p.lineto(width - coverbleed, coverbleed - 2)
             p.stroke()
 
             p.setlinewidth(0.1)
             p.setcolor("stroke", "rgb", 0, 0, 0, 0)
             'right top vertical
-            p.moveto(cropwidth - coverbleed, 0)
-            p.lineto(cropwidth - coverbleed, coverbleed - 2)
+            p.moveto(width - coverbleed, 0)
+            p.lineto(width - coverbleed, coverbleed - 2)
             p.stroke()
 
             p.setlinewidth(0.3)
             p.setcolor("stroke", "rgb", 1, 1, 1, 1)
             'right top horizontal
-            p.moveto(cropwidth, coverbleed)
-            p.lineto(cropwidth - coverbleed + 2, coverbleed)
+            p.moveto(width, coverbleed)
+            p.lineto(width - coverbleed + 2, coverbleed)
             p.stroke()
 
             p.setlinewidth(0.1)
             p.setcolor("stroke", "rgb", 0, 0, 0, 0)
             'right top horizontal
-            p.moveto(cropwidth, coverbleed)
-            p.lineto(cropwidth - coverbleed + 2, coverbleed)
+            p.moveto(width, coverbleed)
+            p.lineto(width - coverbleed + 2, coverbleed)
             p.stroke()
 
             p.setlinewidth(0.3)
             p.setcolor("stroke", "rgb", 1, 1, 1, 1)
             'right bottom horizontal
-            p.moveto(cropwidth, cropheight - coverbleed)
-            p.lineto(cropwidth - coverbleed + 2, cropheight - coverbleed)
+            p.moveto(width, height - coverbleed)
+            p.lineto(width - coverbleed + 2, height - coverbleed)
             p.stroke()
 
             p.setlinewidth(0.1)
             p.setcolor("stroke", "rgb", 0, 0, 0, 0)
             'right bottom horizontal
-            p.moveto(cropwidth, cropheight - coverbleed)
-            p.lineto(cropwidth - coverbleed + 2, cropheight - coverbleed)
+            p.moveto(width, height - coverbleed)
+            p.lineto(width - coverbleed + 2, height - coverbleed)
             p.stroke()
 
             p.setlinewidth(0.3)
             p.setcolor("stroke", "rgb", 1, 1, 1, 1)
             'right bottom vertical
-            p.moveto(cropwidth - coverbleed, cropheight)
-            p.lineto(cropwidth - coverbleed, cropheight - coverbleed + 2)
+            p.moveto(width - coverbleed, height)
+            p.lineto(width - coverbleed, height - coverbleed + 2)
             p.stroke()
 
             p.setlinewidth(0.1)
             p.setcolor("stroke", "rgb", 0, 0, 0, 0)
             'right bottom vertical
-            p.moveto(cropwidth - coverbleed, cropheight)
-            p.lineto(cropwidth - coverbleed, cropheight - coverbleed + 2)
+            p.moveto(width - coverbleed, height)
+            p.lineto(width - coverbleed, height - coverbleed + 2)
             p.stroke()
 
             p.setlinewidth(0.3)
             p.setcolor("stroke", "rgb", 1, 1, 1, 1)
             'spine bottom vertical
-            p.moveto(spineX + coverbleed, cropheight)
-            p.lineto(spineX + coverbleed, cropheight - coverbleed + 2)
+            p.moveto(spineX + coverbleed, height)
+            p.lineto(spineX + coverbleed, height - coverbleed + 2)
             p.stroke()
 
             p.setlinewidth(0.1)
             p.setcolor("stroke", "rgb", 0, 0, 0, 0)
             'spine bottom vertical
-            p.moveto(spineX + coverbleed, cropheight)
-            p.lineto(spineX + coverbleed, cropheight - coverbleed + 2)
+            p.moveto(spineX + coverbleed, height)
+            p.lineto(spineX + coverbleed, height - coverbleed + 2)
             p.stroke()
 
             p.setlinewidth(0.3)
             p.setcolor("stroke", "rgb", 1, 1, 1, 1)
             'left bottom vertical
-            p.moveto(coverbleed, cropheight)
-            p.lineto(coverbleed, cropheight - coverbleed + 2)
+            p.moveto(coverbleed, height)
+            p.lineto(coverbleed, height - coverbleed + 2)
             p.stroke()
 
             p.setlinewidth(0.1)
             p.setcolor("stroke", "rgb", 0, 0, 0, 0)
             'left bottom vertical
-            p.moveto(coverbleed, cropheight)
-            p.lineto(coverbleed, cropheight - coverbleed + 2)
+            p.moveto(coverbleed, height)
+            p.lineto(coverbleed, height - coverbleed + 2)
             p.stroke()
 
             p.setlinewidth(0.3)
             p.setcolor("stroke", "rgb", 1, 1, 1, 1)
             'left bottom horizontal
-            p.moveto(0, cropheight - coverbleed)
-            p.lineto(coverbleed - 2, cropheight - coverbleed)
+            p.moveto(0, height - coverbleed)
+            p.lineto(coverbleed - 2, height - coverbleed)
             p.stroke()
 
             p.setlinewidth(0.1)
             p.setcolor("stroke", "rgb", 0, 0, 0, 0)
             'left bottom horizontal
-            p.moveto(0, cropheight - coverbleed)
-            p.lineto(coverbleed - 2, cropheight - coverbleed)
+            p.moveto(0, height - coverbleed)
+            p.lineto(coverbleed - 2, height - coverbleed)
             p.stroke()
 
         End If
@@ -2852,30 +2879,49 @@ Class MainWindow
 
         If currentOrder.status = "startJPG" Then
 
-            ConvertToJpgCover(pdf_createfolder, cover_filename)
+            Thread.Sleep(5000)
+
+            ConvertToJpgCover(pdf_createfolder, cover_filename, width, height, coverbleed)
+
+        Else
+
+            CreatePageBlock()
 
         End If
 
-        CreatePageBlock()
-
     End Sub
 
-    Private Sub ConvertToJpgCover(sourcefolder As String, source As String)
+    Private Sub ConvertToJpgCover(sourcefolder As String, source As String, w As Double, h As Double, crop As Double)
+
+        crop = crop * (300 / 72)
+        w = w * (300 / 72)
+        h = h * (300 / 72)
 
         Dim myguid = Guid.NewGuid().ToString()
         Dim batchFilePath = Convert.ToString(sourcefolder + myguid) & ".bat"
-        Dim cmd = "convert -density 300 " & sourcefolder & source & " " & sourcefolder & "cover.jpg"
+        'Create the folder
+        If Not Directory.Exists(sourcefolder & currentOrder.id) Then
+            Directory.CreateDirectory(sourcefolder & currentOrder.id)
+        End If
+        Dim cmd = "convert -density 300 " & sourcefolder & source & " " & sourcefolder & currentOrder.id & "\cover.jpg"
         CreateBatchFile(cmd, batchFilePath)
         ' Temporary Batch file
         RunBatchFile(batchFilePath)
         DeleteBatchFile(batchFilePath)
+
+        CreatePageBlock()
+
     End Sub
 
     Private Sub ConvertToJpgPages(sourcefolder As String, source As String)
 
         Dim myguid = Guid.NewGuid().ToString()
         Dim batchFilePath = Convert.ToString(sourcefolder + myguid) & ".bat"
-        Dim cmd = "convert -density 300 " & sourcefolder & source & " " & sourcefolder & "page-%02d.jpg"
+        'Create the folder
+        If Not Directory.Exists(sourcefolder & currentOrder.id) Then
+            Directory.CreateDirectory(sourcefolder & currentOrder.id)
+        End If
+        Dim cmd = "convert -density 300 " & sourcefolder & source & " " & sourcefolder & currentOrder.id & "\page.jpg"
         CreateBatchFile(cmd, batchFilePath)
         ' Temporary Batch file
         RunBatchFile(batchFilePath)
@@ -2936,7 +2982,7 @@ Class MainWindow
 
                             Dim lastx As Double = posx
 
-                            Dim nodes As XmlNodeList = textline.SelectNodes("descendant:: Span")
+                            Dim nodes As XmlNodeList = textline.SelectNodes("descendant:: span")
                             Dim finalStr As String = ""
                             Dim tf As Integer = -1
                             Dim leading As Double = 0
@@ -3271,6 +3317,8 @@ Class MainWindow
         '==============================================================================
         If currentOrder.status = "startJPG" Then
 
+            Thread.Sleep(5000)
+
             'Open the PDF and save the content as an image! Store this image in the webprintDoc!
             ConvertToJpgPages(pdf_createfolder, bblock_filename)
 
@@ -3281,15 +3329,20 @@ Class MainWindow
         '==============================================================================
         Dim sqlStr As String
         If singlepageproduct = True Then
+            'Add the XML for the order (JPG)
             sqlStr = "UPDATE pdfengine_order_pdfs SET status = 'finished', path_bbloc='" & bblock_filename & "', path_cover='', nr_pages=" & numPages & " WHERE id = " & currentOrder.id
         Else
-            sqlStr = "UPDATE pdfengine_order_pdfs SET status = 'finished', path_bbloc='" & bblock_filename & "', path_cover='" & cover_filename & "', nr_pages=" & numPages & " WHERE id = " & currentOrder.id
+            If currentOrder.status = "startJPG" Then
+                sqlStr = "UPDATE pdfengine_order_pdfs SET status = 'finished', path_bbloc='" & bblock_filename & "', path_cover='" & cover_filename & "', nr_pages=" & numPages & " WHERE id = " & currentOrder.id
+            Else
+                sqlStr = "UPDATE pdfengine_order_pdfs SET status = 'finished', path_bbloc='" & bblock_filename & "', path_cover='" & cover_filename & "', nr_pages=" & numPages & " WHERE id = " & currentOrder.id
+            End If
         End If
 
         Dim connStringSQL As New MySqlConnection(mySqlConnection)
         Dim myCommand As New MySqlCommand(sqlStr, connStringSQL)
         myCommand.Connection.Open()
-        'myCommand.ExecuteScalar()
+        myCommand.ExecuteScalar()
         myCommand.Connection.Close()
 
         'Send an email to Maurice to check the PDF!
@@ -3317,7 +3370,6 @@ Class MainWindow
         Catch ex As Exception
 
             'Do nothing for now
-
 
         End Try
 
