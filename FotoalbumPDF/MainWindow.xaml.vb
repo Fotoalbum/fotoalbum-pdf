@@ -164,8 +164,6 @@ Class MainWindow
             If currentOrder.status = "startJPG" Then
                 createJPG = True
                 webprintDoc = New XmlDocument
-                Dim docNode As XmlNode = webprintDoc.CreateXmlDeclaration("1.0", "UTF-8", Nothing)
-                webprintDoc.AppendChild(docNode)
             End If
 
             'Check if this is a lay flat book
@@ -561,7 +559,7 @@ Class MainWindow
                                 Dim flip As New ScaleTransform()
                                 Select Case imgRotation
                                     Case 0
-                                        offsetX = width - (imgWidth + offsetX)
+                                        offsetX = pagewidth - (imgWidth + offsetX)
                                         flip.ScaleX = -1
                                     Case 90
                                         flip.ScaleY = -1
@@ -1980,7 +1978,6 @@ Class MainWindow
                             If arr.Count > 0 Then
                                 filename = searchpath_imagefolder & arr(0)
                                 filename = filename.Replace("\", "/")
-                                Debug.Print(filename)
                             Else
                                 continueImage = False
                             End If
@@ -2018,6 +2015,8 @@ Class MainWindow
                             posx += wrap
                             posy += wrap
                         End If
+
+
 
                         Dim offsetX As Double = XmlConvert.ToDouble(element.Attributes.GetNamedItem("offsetX").Value.ToString) * (targetDPI / 96)
                         Dim offsetY As Double = XmlConvert.ToDouble(element.Attributes.GetNamedItem("offsetY").Value.ToString) * (targetDPI / 96)
@@ -2879,9 +2878,9 @@ Class MainWindow
 
         If currentOrder.status = "startJPG" Then
 
-            Thread.Sleep(5000)
+            Thread.Sleep(3000)
 
-            ConvertToJpgCover(pdf_createfolder, cover_filename, width, height, coverbleed)
+            ConvertToJpgCover(pdf_createfolder, cover_filename, width, height, XmlConvert.ToDouble(spreadLst(2).Attributes.GetNamedItem("totalWidth").Value.ToString()), XmlConvert.ToDouble(spreadLst(2).Attributes.GetNamedItem("totalHeight").Value.ToString()))
 
         Else
 
@@ -2891,11 +2890,7 @@ Class MainWindow
 
     End Sub
 
-    Private Sub ConvertToJpgCover(sourcefolder As String, source As String, w As Double, h As Double, crop As Double)
-
-        crop = crop * (300 / 72)
-        w = w * (300 / 72)
-        h = h * (300 / 72)
+    Private Sub ConvertToJpgCover(sourcefolder As String, source As String, w As Double, h As Double, docWidth As Double, docHeight As Double)
 
         Dim myguid = Guid.NewGuid().ToString()
         Dim batchFilePath = Convert.ToString(sourcefolder + myguid) & ".bat"
@@ -2903,17 +2898,111 @@ Class MainWindow
         If Not Directory.Exists(sourcefolder & currentOrder.id) Then
             Directory.CreateDirectory(sourcefolder & currentOrder.id)
         End If
-        Dim cmd = "convert -density 300 " & sourcefolder & source & " " & sourcefolder & currentOrder.id & "\cover.jpg"
+        Dim cmd = "convert " & sourcefolder & source & " " & sourcefolder & currentOrder.id & "\cover.jpg"
         CreateBatchFile(cmd, batchFilePath)
         ' Temporary Batch file
         RunBatchFile(batchFilePath)
         DeleteBatchFile(batchFilePath)
+
+        'Add the cover info to the xml
+        Dim root As XmlElement = webprintDoc.CreateElement("document")
+        webprintDoc.AppendChild(root)
+
+        Dim header As XmlElement = webprintDoc.CreateElement("header")
+        root.AppendChild(header)
+
+        Dim size As XmlElement = webprintDoc.CreateElement("size")
+        Dim size_width As XmlAttribute = webprintDoc.CreateAttribute("width")
+        size_width.Value = docWidth
+        Dim size_height As XmlAttribute = webprintDoc.CreateAttribute("height")
+        size_height.Value = docHeight
+        size.Attributes.Append(size_width)
+        size.Attributes.Append(size_height)
+        header.AppendChild(size)
+
+        Dim pagecount As XmlElement = webprintDoc.CreateElement("pageCount")
+        pagecount.InnerText = numPages
+        header.AppendChild(pagecount)
+
+        Dim is_double_page_layout As XmlElement = webprintDoc.CreateElement("is_double_page_layout")
+        If isLayFlat = True Then
+            is_double_page_layout.InnerText = True
+        Else
+            is_double_page_layout.InnerText = False
+        End If
+        header.AppendChild(is_double_page_layout)
+
+        Dim canvas As XmlElement = webprintDoc.CreateElement("canvas")
+        root.AppendChild(canvas)
+
+        Dim image As XmlElement = webprintDoc.CreateElement("image")
+        Dim image_type As XmlAttribute = webprintDoc.CreateAttribute("type")
+        image_type.Value = "bitmap"
+        Dim image_ext As XmlAttribute = webprintDoc.CreateAttribute("ext")
+        image_ext.Value = "jpg"
+        image.Attributes.Append(image_type)
+        image.Attributes.Append(image_ext)
+
+        Dim position As XmlElement = webprintDoc.CreateElement("position")
+        Dim position_x As XmlAttribute = webprintDoc.CreateAttribute("x")
+        position_x.Value = 0
+        Dim position_y As XmlAttribute = webprintDoc.CreateAttribute("y")
+        position_y.Value = 0
+        position.Attributes.Append(position_x)
+        position.Attributes.Append(position_y)
+        image.AppendChild(position)
+
+        Dim image_size As XmlElement = webprintDoc.CreateElement("size")
+        Dim image_width As XmlAttribute = webprintDoc.CreateAttribute("width")
+        image_width.Value = w
+        Dim image_height As XmlAttribute = webprintDoc.CreateAttribute("height")
+        image_height.Value = h
+        image_size.Attributes.Append(image_width)
+        image_size.Attributes.Append(image_height)
+        image.AppendChild(image_size)
+
+        Dim url As XmlElement = webprintDoc.CreateElement("url")
+        url.InnerText = "http://api.xhibit.com/v2/pdfexports/" & currentOrder.id & "/cover.jpg"
+        image.AppendChild(url)
+
+        Dim photoSize As XmlElement = webprintDoc.CreateElement("photoSize")
+        Dim photoSize_width As XmlAttribute = webprintDoc.CreateAttribute("width")
+        photoSize_width.Value = w
+        Dim photoSize_height As XmlAttribute = webprintDoc.CreateAttribute("height")
+        photoSize_height.Value = h
+        photoSize.Attributes.Append(photoSize_width)
+        photoSize.Attributes.Append(photoSize_height)
+        image.AppendChild(photoSize)
+
+        Dim photoPos As XmlElement = webprintDoc.CreateElement("photoPos")
+        Dim photoPos_x As XmlAttribute = webprintDoc.CreateAttribute("x")
+        photoPos_x.Value = 0
+        Dim photoPos_y As XmlAttribute = webprintDoc.CreateAttribute("y")
+        photoPos_y.Value = 0
+        photoPos.Attributes.Append(photoPos_x)
+        photoPos.Attributes.Append(photoPos_y)
+        image.AppendChild(photoPos)
+
+        Dim photoRawSize As XmlElement = webprintDoc.CreateElement("photoRawSize")
+        Dim photoRawSize_width As XmlAttribute = webprintDoc.CreateAttribute("width")
+        photoRawSize_width.Value = w
+        Dim photoRawSize_height As XmlAttribute = webprintDoc.CreateAttribute("height")
+        photoRawSize_height.Value = h
+        photoRawSize.Attributes.Append(photoRawSize_width)
+        photoRawSize.Attributes.Append(photoRawSize_height)
+        image.AppendChild(photoRawSize)
+
+        Dim depth As XmlElement = webprintDoc.CreateElement("depth")
+        depth.InnerText = 1
+        image.AppendChild(depth)
+
+        canvas.AppendChild(image)
 
         CreatePageBlock()
 
     End Sub
 
-    Private Sub ConvertToJpgPages(sourcefolder As String, source As String)
+    Private Sub ConvertToJpgPages(sourcefolder As String, source As String, w As Double, h As Double)
 
         Dim myguid = Guid.NewGuid().ToString()
         Dim batchFilePath = Convert.ToString(sourcefolder + myguid) & ".bat"
@@ -2921,14 +3010,94 @@ Class MainWindow
         If Not Directory.Exists(sourcefolder & currentOrder.id) Then
             Directory.CreateDirectory(sourcefolder & currentOrder.id)
         End If
-        Dim cmd = "convert -density 300 " & sourcefolder & source & " " & sourcefolder & currentOrder.id & "\page.jpg"
+        Dim cmd = "convert " & sourcefolder & source & " " & sourcefolder & currentOrder.id & "\page.jpg"
         CreateBatchFile(cmd, batchFilePath)
         ' Temporary Batch file
         RunBatchFile(batchFilePath)
         DeleteBatchFile(batchFilePath)
+
+        'Add the jpeg info to the webprint doc
+        Dim root As XmlElement = webprintDoc.DocumentElement
+
+        'Update the numpages in the header
+        Dim header As XmlElement = root.SelectSingleNode("header")
+        Dim pageCount As XmlElement = header.SelectSingleNode("pageCount")
+        pageCount.InnerText = numPages
+
+        For x = 0 To numPages - 1
+
+            Dim canvas As XmlElement = webprintDoc.CreateElement("canvas")
+            root.AppendChild(canvas)
+
+            Dim image As XmlElement = webprintDoc.CreateElement("image")
+            Dim image_type As XmlAttribute = webprintDoc.CreateAttribute("type")
+            image_type.Value = "bitmap"
+            Dim image_ext As XmlAttribute = webprintDoc.CreateAttribute("ext")
+            image_ext.Value = "jpg"
+            image.Attributes.Append(image_type)
+            image.Attributes.Append(image_ext)
+
+            Dim position As XmlElement = webprintDoc.CreateElement("position")
+            Dim position_x As XmlAttribute = webprintDoc.CreateAttribute("x")
+            position_x.Value = 0
+            Dim position_y As XmlAttribute = webprintDoc.CreateAttribute("y")
+            position_y.Value = 0
+            position.Attributes.Append(position_x)
+            position.Attributes.Append(position_y)
+            image.AppendChild(position)
+
+            Dim image_size As XmlElement = webprintDoc.CreateElement("size")
+            Dim image_width As XmlAttribute = webprintDoc.CreateAttribute("width")
+            image_width.Value = w
+            Dim image_height As XmlAttribute = webprintDoc.CreateAttribute("height")
+            image_height.Value = h
+            image_size.Attributes.Append(image_width)
+            image_size.Attributes.Append(image_height)
+            image.AppendChild(image_size)
+
+            Dim url As XmlElement = webprintDoc.CreateElement("url")
+            url.InnerText = "http://api.xhibit.com/v2/pdfexports/" & currentOrder.id & "/page-" & x & ".jpg"
+            image.AppendChild(url)
+
+            Dim photoSize As XmlElement = webprintDoc.CreateElement("photoSize")
+            Dim photoSize_width As XmlAttribute = webprintDoc.CreateAttribute("width")
+            photoSize_width.Value = w
+            Dim photoSize_height As XmlAttribute = webprintDoc.CreateAttribute("height")
+            photoSize_height.Value = h
+            photoSize.Attributes.Append(photoSize_width)
+            photoSize.Attributes.Append(photoSize_height)
+            image.AppendChild(photoSize)
+
+            Dim photoPos As XmlElement = webprintDoc.CreateElement("photoPos")
+            Dim photoPos_x As XmlAttribute = webprintDoc.CreateAttribute("x")
+            photoPos_x.Value = 0
+            Dim photoPos_y As XmlAttribute = webprintDoc.CreateAttribute("y")
+            photoPos_y.Value = 0
+            photoPos.Attributes.Append(photoPos_x)
+            photoPos.Attributes.Append(photoPos_y)
+            image.AppendChild(photoPos)
+
+            Dim photoRawSize As XmlElement = webprintDoc.CreateElement("photoRawSize")
+            Dim photoRawSize_width As XmlAttribute = webprintDoc.CreateAttribute("width")
+            photoRawSize_width.Value = w
+            Dim photoRawSize_height As XmlAttribute = webprintDoc.CreateAttribute("height")
+            photoRawSize_height.Value = h
+            photoRawSize.Attributes.Append(photoRawSize_width)
+            photoRawSize.Attributes.Append(photoRawSize_height)
+            image.AppendChild(photoRawSize)
+
+            Dim depth As XmlElement = webprintDoc.CreateElement("depth")
+            depth.InnerText = 1
+            image.AppendChild(depth)
+
+            canvas.AppendChild(image)
+
+        Next
+
     End Sub
 
     Private Shared Sub RunBatchFile(batFilePath As String)
+
         Dim myProcess = New Process()
         myProcess.StartInfo.FileName = batFilePath
         myProcess.StartInfo.WindowStyle = ProcessWindowStyle.Hidden
@@ -2937,6 +3106,7 @@ Class MainWindow
         myProcess.StartInfo.WorkingDirectory = "C:\Program Files\ImageMagick-6.9.3-Q16"
         myProcess.Start()
         myProcess.WaitForExit()
+
     End Sub
 
     Private Shared Sub DeleteBatchFile(file__1 As String)
@@ -2944,11 +3114,13 @@ Class MainWindow
     End Sub
 
     Private Shared Sub CreateBatchFile(input As String, filePath As String)
+
         Dim fs As New FileStream(filePath, FileMode.Create)
         Dim writer As New StreamWriter(fs)
         writer.WriteLine(input)
         writer.Close()
         fs.Close()
+
     End Sub
 
     Private Function CreateTextLines(id As String, posx As Double, posy As Double, r As Double) As Boolean
@@ -3136,6 +3308,9 @@ Class MainWindow
 
         End If
 
+        Dim jpegWidth As Double = 0
+        Dim jpegHeight As Double = 0
+
         Dim startspread As Integer = 1
         If singlepageproduct Then startspread = 0
 
@@ -3153,6 +3328,9 @@ Class MainWindow
                 Dim width As Double = XmlConvert.ToDouble(spreadLst(2).Attributes.GetNamedItem("totalWidth").Value.ToString())
                 Dim height As Double = XmlConvert.ToDouble(spread.Attributes.GetNamedItem("totalHeight").Value.ToString())
                 Dim bleed As Double = XmlConvert.ToDouble(pages(0).Attributes.GetNamedItem("horizontalBleed").Value.ToString())
+
+                jpegWidth = width
+                jpegHeight = height
 
                 Dim trimbox As String = "trimbox={" & bleed & " " & bleed & " " & width - bleed & " " & height - bleed & "}"
 
@@ -3228,6 +3406,9 @@ Class MainWindow
                     Dim height As Double = XmlConvert.ToDouble(page.Attributes.GetNamedItem("pageHeight").Value.ToString()) + (2 * bleed) + (2 * wrap)
                     xmargin = 0
 
+                    jpegWidth = width
+                    jpegHeight = height
+
                     Dim trimbox As String
                     If singlepageproduct = True Then
                         trimbox = "trimbox={" & bleed + wrap & " " & bleed + wrap & " " & width - bleed - wrap & " " & height - bleed - wrap & "}"
@@ -3253,12 +3434,14 @@ Class MainWindow
                         xmargin = width - (2 * bleed)
                     End If
 
-                    If singlepageFirst = True Then
+                    Dim fp As Double = 0
+                    If singlepageFirst = True Or singlepageLast = True Then
                         xmargin = 0
+                        fp = bleed / 2
                     End If
 
                     Dim imageopt As String = "boxsize={" & width & " " & height & "} position={" & position & "} fitmethod=slice"
-                    p.fit_image(img, 0, height, imageopt)
+                    p.fit_image(img, fp, height, imageopt)
                     p.close_image(img)
 
                     Dim elements As XmlNodeList = spread.SelectSingleNode("elements").SelectNodes("element")
@@ -3268,7 +3451,7 @@ Class MainWindow
                         If element.Attributes.GetNamedItem("type").Value = "text" Then
 
                             'Find the textelement and place it
-                            Dim posx As Double = XmlConvert.ToDouble(element.Attributes.GetNamedItem("objectX").Value.ToString) - xmargin
+                            Dim posx As Double = XmlConvert.ToDouble(element.Attributes.GetNamedItem("objectX").Value.ToString) - xmargin + fp
                             Dim posy As Double = XmlConvert.ToDouble(element.Attributes.GetNamedItem("objectY").Value.ToString)
                             Dim rotation As Double = XmlConvert.ToDouble(element.Attributes.GetNamedItem("rotation").Value.ToString)
 
@@ -3282,7 +3465,11 @@ Class MainWindow
                         End If
                     Next
 
-                    If DrawBBlockCropmarks(width, height, bleed) = True Then
+                    If currentOrder.status = "start" Then
+                        If DrawBBlockCropmarks(width, height, bleed) = True Then
+                            p.end_page_ext("")
+                        End If
+                    Else
                         p.end_page_ext("")
                     End If
 
@@ -3317,10 +3504,10 @@ Class MainWindow
         '==============================================================================
         If currentOrder.status = "startJPG" Then
 
-            Thread.Sleep(5000)
+            Thread.Sleep(3000)
 
             'Open the PDF and save the content as an image! Store this image in the webprintDoc!
-            ConvertToJpgPages(pdf_createfolder, bblock_filename)
+            ConvertToJpgPages(pdf_createfolder, bblock_filename, jpegWidth, jpegHeight)
 
         End If
 
@@ -3333,7 +3520,7 @@ Class MainWindow
             sqlStr = "UPDATE pdfengine_order_pdfs SET status = 'finished', path_bbloc='" & bblock_filename & "', path_cover='', nr_pages=" & numPages & " WHERE id = " & currentOrder.id
         Else
             If currentOrder.status = "startJPG" Then
-                sqlStr = "UPDATE pdfengine_order_pdfs SET status = 'finished', path_bbloc='" & bblock_filename & "', path_cover='" & cover_filename & "', nr_pages=" & numPages & " WHERE id = " & currentOrder.id
+                sqlStr = "UPDATE pdfengine_order_pdfs SET status = 'finished', path_bbloc='" & bblock_filename & "', path_cover='" & cover_filename & "', nr_pages=" & numPages & ", document_xml='" & webprintDoc.OuterXml & "' WHERE id = " & currentOrder.id
             Else
                 sqlStr = "UPDATE pdfengine_order_pdfs SET status = 'finished', path_bbloc='" & bblock_filename & "', path_cover='" & cover_filename & "', nr_pages=" & numPages & " WHERE id = " & currentOrder.id
             End If
