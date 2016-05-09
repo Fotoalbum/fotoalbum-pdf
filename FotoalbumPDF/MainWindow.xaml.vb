@@ -1465,6 +1465,8 @@ Class MainWindow
 
             Dim width As Double = XmlConvert.ToDouble(spread.Attributes.GetNamedItem("totalWidth").Value.ToString()) * (targetDPI / 96)
             Dim height As Double = XmlConvert.ToDouble(spread.Attributes.GetNamedItem("totalHeight").Value.ToString()) * (targetDPI / 96)
+            Dim pwidth As Double = 0
+            Dim pheight As Double = 0
 
             If singlepageproduct = True Then
                 width = XmlConvert.ToDouble(pages(0).Attributes.GetNamedItem("pageWidth").Value.ToString()) * (targetDPI / 96)
@@ -1522,6 +1524,9 @@ Class MainWindow
                 Dim pagewidth As Double = XmlConvert.ToDouble(page.Attributes.GetNamedItem("width").Value) * (targetDPI / 96)
                 Dim pageheight As Double = XmlConvert.ToDouble(page.Attributes.GetNamedItem("height").Value) * (targetDPI / 96)
 
+                pwidth = pagewidth
+                pheight = pageheight
+
                 If page.Attributes.GetNamedItem("backgroundColor").Value.ToString <> "-1" Then
 
                     If spread.SelectSingleNode("background") Is Nothing Then
@@ -1543,20 +1548,6 @@ Class MainWindow
                         mainspread.Children.Add(bg)
 
                     End If
-
-                End If
-
-                If isLayFlat = True And renderindex = spreadLst.Count - 1 Then
-
-                    'Force a white background for the right page
-                    Dim bg As New Canvas
-                    bg.Width = pagewidth
-                    bg.Height = pageheight
-                    bg.Background = New SolidColorBrush(System.Windows.Media.Color.FromRgb(255, 255, 255))
-                    bg.HorizontalAlignment = Windows.HorizontalAlignment.Right
-                    bg.VerticalAlignment = Windows.VerticalAlignment.Top
-                    bg.Margin = New Thickness(pagewidth, 0, 0, 0)
-                    mainspread.Children.Add(bg)
 
                 End If
 
@@ -2630,6 +2621,19 @@ Class MainWindow
 
             Next
 
+            If isLayFlat = True And renderindex = spreadLst.Count - 1 Then
+
+                'Force a white background for the right page
+                Dim bg As New Canvas
+                bg.Width = pwidth
+                bg.Height = pheight
+                bg.Background = New SolidColorBrush(System.Windows.Media.Color.FromRgb(255, 255, 255))
+                bg.HorizontalAlignment = Windows.HorizontalAlignment.Right
+                bg.VerticalAlignment = Windows.VerticalAlignment.Top
+                bg.Margin = New Thickness(pwidth, 0, 0, 0)
+                mainspread.Children.Add(bg)
+
+            End If
 
             'Save the image
             savebblocktimer = New DispatcherTimer()
@@ -2671,7 +2675,7 @@ Class MainWindow
 
         Dim width As Double = XmlConvert.ToDouble(spread.Attributes.GetNamedItem("totalWidth").Value.ToString())
         Dim height As Double = XmlConvert.ToDouble(spread.Attributes.GetNamedItem("totalHeight").Value.ToString())
-        Dim trimbox As String = "trimbox={" & coverbleed & " " & coverbleed & " " & width + coverbleed & " " & height + coverbleed & "}"
+        Dim trimbox As String = "trimbox={" & coverbleed & " " & coverbleed & " " & width - coverbleed & " " & height - coverbleed & "}"
 
         Dim filename As String = exportfolder & spreadID & ".jpg"
 
