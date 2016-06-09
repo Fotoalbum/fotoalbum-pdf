@@ -792,8 +792,6 @@ Class MainWindow
 
                 Dim elementID As String = element.Attributes.GetNamedItem("id").Value
 
-                Debug.Print(element.Attributes.GetNamedItem("type").Value)
-
                 If element.Attributes.GetNamedItem("type").Value = "photo" Then
 
                     Dim filename As String = ""
@@ -817,13 +815,11 @@ Class MainWindow
                         If (element.Attributes.GetNamedItem("hires_url").Value <> "") Then
                             filename = searchpath_imagefolder & element.Attributes.GetNamedItem("hires_url").Value
                             filename = filename.Replace("\", "/")
-                            Debug.Print(filename)
                         Else
                             Dim arr As ArrayList = GetFileUrlFromUpload(element.Attributes.GetNamedItem("original_image_id").Value)
                             If arr.Count > 0 Then
                                 filename = searchpath_imagefolder & arr(0)
                                 filename = filename.Replace("\", "/")
-                                Debug.Print(filename)
                             Else
                                 continueImage = False
                             End If
@@ -1066,6 +1062,11 @@ Class MainWindow
                             overlay.VerticalAlignment = Windows.VerticalAlignment.Top
                             overlay.Width = w
                             overlay.Height = h
+                            If r <> 0 Then
+                                Dim rt As New RotateTransform()
+                                rt.Angle = r
+                                overlay.RenderTransform = rt
+                            End If
                             overlay.Margin = New Thickness(posx, posy, 0, 0)
 
                             If imageAlpha < 1 Then
@@ -2248,6 +2249,11 @@ Class MainWindow
                             overlay.VerticalAlignment = Windows.VerticalAlignment.Top
                             overlay.Width = w
                             overlay.Height = h
+                            If r <> 0 Then
+                                Dim rt As New RotateTransform()
+                                rt.Angle = r
+                                overlay.RenderTransform = rt
+                            End If
                             overlay.Margin = New Thickness(layflatmargin + posx, posy, 0, 0)
 
                             If imageAlpha < 1 Then
